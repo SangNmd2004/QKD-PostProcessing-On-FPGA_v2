@@ -22,6 +22,7 @@ file mkdir "$proj_dir/sources_1/imports/pa_ntt"
 file copy -force "$src_dir/rtl/pa_ntt/prng_lfsr.v" "$proj_dir/sources_1/imports/pa_ntt/prng_lfsr.v"
 file copy -force "$src_dir/rtl/pa_ntt/pa_bram_ctrl.v" "$proj_dir/sources_1/imports/pa_ntt/pa_bram_ctrl.v"
 file copy -force "$src_dir/rtl/pa_ntt/pa_toeplitz_hash.v" "$proj_dir/sources_1/imports/pa_ntt/pa_toeplitz_hash.v"
+catch {file delete -force "$proj_dir/sources_1/imports/pa_ntt/parametric_ntt"}
 catch {file copy -force "$src_dir/rtl/pa_ntt/parametric_ntt" "$proj_dir/sources_1/imports/pa_ntt/"}
 
 # Cảnh báo: Lần đầu thêm thư mục parametric_ntt, bạn có thể cần add folder này vào project Vivado qua lệnh add_files.
