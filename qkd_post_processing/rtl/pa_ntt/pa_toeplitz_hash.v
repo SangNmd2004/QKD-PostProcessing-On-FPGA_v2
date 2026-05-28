@@ -202,8 +202,8 @@ module pa_toeplitz_hash #(
                 end
                 
                 ST_ACCUMULATE: begin
-                    // Accumulate ntt_dout for final hash
-                    pa_hash_out <= pa_hash_out ^ ntt_dout[HASH_LEN-1:0];
+                    // Accumulate ntt_dout for final hash (Circular shift and XOR)
+                    pa_hash_out <= {pa_hash_out[HASH_LEN-2:0], pa_hash_out[HASH_LEN-1]} ^ ntt_dout;
                     if (cnt == NTT_N - 1) begin
                         state <= ST_DONE;
                     end
