@@ -24,6 +24,7 @@ module qkd_post_processing_top #(
     output wire [PA_DATA_W-1:0] m_axis_key_tdata,
     output wire m_axis_key_tvalid,
     input wire m_axis_key_tready,
+    output wire m_axis_key_tlast,
     
     // Trạng thái hệ thống
     output wire ir_success,
@@ -242,7 +243,7 @@ module qkd_post_processing_top #(
         .m_axis_tdata(m_axis_key_tdata),
         .m_axis_tvalid(m_axis_key_tvalid),
         .m_axis_tready(m_axis_key_tready),
-        .m_axis_tlast() // Can expose to top level if needed
+        .m_axis_tlast(m_axis_key_tlast)
     );
 
     // ==========================================
