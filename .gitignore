@@ -33,3 +33,8 @@ venv/
 # Log and data outputs
 /data/
 *.csv
+
+# Ignored by user request
+*paper*abstract*.txt
+*.tcl
+*vivado_block_design_guide*
