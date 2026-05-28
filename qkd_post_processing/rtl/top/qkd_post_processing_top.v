@@ -33,27 +33,7 @@ module qkd_post_processing_top #(
 );
 
     // ==========================================
-    // 1. MODULE: LLR Input FIFO (AXI-Stream)
-    // ==========================================
-    wire [7:0] axis_llr_fifo_tdata;
-    wire axis_llr_fifo_tvalid;
-    wire axis_llr_fifo_tready;
-
-    // Xilinx IP: axis_data_fifo (8-bit width)
-    fifo_llr_in u_fifo_llr_in (
-        .s_axis_aresetn(~rst),
-        .s_axis_aclk(clk),
-        .s_axis_tvalid(s_axis_llr_tvalid),
-        .s_axis_tready(s_axis_llr_tready),
-        .s_axis_tdata(s_axis_llr_tdata), // Natively 8-bit now
-        
-        .m_axis_tvalid(axis_llr_fifo_tvalid),
-        .m_axis_tready(axis_llr_fifo_tready),
-        .m_axis_tdata(axis_llr_fifo_tdata)
-    );
-
-    // ==========================================
-    // 2. LLR AXI-Stream to Parallel
+    // 1. LLR AXI-Stream to Parallel (Direct)
     // ==========================================
     wire [LLR_W*LDPC_BLOCK-1:0] ldpc_l_buffer;
     wire ldpc_start;
@@ -61,14 +41,14 @@ module qkd_post_processing_top #(
     
     // Tích hợp LLR tuần tự thành 1 khối
     axis_to_parallel #(
-        .DATA_W(LLR_W),
+        .DATA_W(LLR_W), // Trích xuất 5-bit LLR từ gói 8-bit
         .BLOCK_BITS(LLR_W * LDPC_BLOCK)
     ) u_axis_to_parallel_llr (
         .clk(clk),
         .rst(rst),
-        .s_axis_tdata(axis_llr_fifo_tdata),
-        .s_axis_tvalid(axis_llr_fifo_tvalid),
-        .s_axis_tready(axis_llr_fifo_tready),
+        .s_axis_tdata(s_axis_llr_tdata[LLR_W-1:0]),
+        .s_axis_tvalid(s_axis_llr_tvalid),
+        .s_axis_tready(s_axis_llr_tready),
         .s_axis_tlast(1'b0),
         
         .p_data_out(ldpc_l_buffer),
@@ -161,27 +141,7 @@ module qkd_post_processing_top #(
     );
 
     // ==========================================
-    // 5. Inter-module FIFO (AXI-Stream)
-    // ==========================================
-    wire [63:0] axis_pa_fifo_tdata;
-    wire axis_pa_fifo_tvalid;
-    wire axis_pa_fifo_tready;
-
-    // Xilinx IP: axis_data_fifo (64-bit width)
-    fifo_ir_to_pa u_fifo_ir_to_pa (
-        .s_axis_aresetn(~rst),
-        .s_axis_aclk(clk),
-        .s_axis_tvalid(axis_ir_to_pa_tvalid),
-        .s_axis_tready(axis_ir_to_pa_tready),
-        .s_axis_tdata(axis_ir_to_pa_tdata),
-        
-        .m_axis_tvalid(axis_pa_fifo_tvalid),
-        .m_axis_tready(axis_pa_fifo_tready),
-        .m_axis_tdata(axis_pa_fifo_tdata)
-    );
-
-    // ==========================================
-    // 6. MODULE: PA Ping-Pong BRAM Controller
+    // 5. MODULE: PA Ping-Pong BRAM Controller (Direct)
     // ==========================================
     wire [$clog2(32768/64)-1:0] pa_mem_addr;
     wire [63:0] pa_mem_dout;
@@ -194,9 +154,9 @@ module qkd_post_processing_top #(
     ) u_pa_bram_ctrl (
         .clk(clk),
         .rst(rst),
-        .s_axis_tdata(axis_pa_fifo_tdata),
-        .s_axis_tvalid(axis_pa_fifo_tvalid),
-        .s_axis_tready(axis_pa_fifo_tready),
+        .s_axis_tdata(axis_ir_to_pa_tdata),
+        .s_axis_tvalid(axis_ir_to_pa_tvalid),
+        .s_axis_tready(axis_ir_to_pa_tready),
         .mem_addr(pa_mem_addr),
         .mem_dout(pa_mem_dout),
         .mem_en(pa_mem_en),
