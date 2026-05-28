@@ -11,7 +11,7 @@ module qkd_post_processing_top #(
     input wire [1:0] code_rate, // 00: 1/2, 01: 2/3, 10: 3/4, 11: 5/6
     
     // Giao tiếp AXI-Stream Input (Nhận Sifted Key / LLRs)
-    input wire [LLR_W-1:0] s_axis_llr_tdata,
+    input wire [7:0] s_axis_llr_tdata, // AXI-Stream TDATA must be multiple of 8 bits
     input wire s_axis_llr_tvalid,
     output wire s_axis_llr_tready,
     
@@ -45,7 +45,7 @@ module qkd_post_processing_top #(
         .s_axis_aclk(clk),
         .s_axis_tvalid(s_axis_llr_tvalid),
         .s_axis_tready(s_axis_llr_tready),
-        .s_axis_tdata({3'b000, s_axis_llr_tdata}), // Pad to 8-bit
+        .s_axis_tdata(s_axis_llr_tdata), // Natively 8-bit now
         
         .m_axis_tvalid(axis_llr_fifo_tvalid),
         .m_axis_tready(axis_llr_fifo_tready),
