@@ -3,7 +3,7 @@
 module qkd_post_processing_top #(
     parameter LLR_W = 5,
     parameter LDPC_BLOCK = 2304,
-    parameter PA_DATA_W = 14,
+    parameter PA_DATA_W = 64, // AXI-Stream TDATA must be multiple of 8 bits
     parameter PA_RING_SIZE = 512
 ) (
     input wire clk,
