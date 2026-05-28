@@ -1,0 +1,292 @@
+JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 41, NO. 1, JANUARY 1, 2023 169
+Large-Scale and High-Speed FPGA-Based Privacy
+Ampliﬁcation for Quantum Key Distribution
+Bing-Ze Yan , Qiong Li , Hao-Kun Mao , Hong-Wei Xu, and Ahmed A. Abd El-Latif
+Abstract —In this paper, a high-performance ﬁeld-
+programmable gate array (FPGA) based privacy ampliﬁcation
+(PA) scheme for both continuous variable and discrete variable -
+quantum key distribution (QKD) is presented, which can provide
+more than 1.5 Gbps throughput at the input block size close to
+108. Besides, the resource consumption is so economical that there
+is no need of any external storage. To the best of our knowledge,
+our scheme outperforms existing FPGA based PA schemes by
+over an order of magnitude in terms of throughput and input
+block size. To achieve this feature, we design a novel FPGA-based
+hybrid hash PA algorithm combining multilinear modular hash
+and modular arithmetic hash (MMH-MH) based on number
+theoretical transform (NTT). Based on the hybrid hash algorithm,
+many optimization strategies are designed in our FPGA based PA
+scheme, such as an NTT-based optimization unit, an NTT-reusable
+architecture, a memory-saving modular accumulation unit
+for multilinear modular hash and a pipelined binary modulo
+unit for modular arithmetic hash. Plentiful experiment results
+demonstrate the high performance and reliability of our scheme.
+It can be embedded in most standalone QKD devices conveniently.
+What’s more, it is also a good candidate for a chip-based QKD
+system.
+Index Terms —FPGA, multilinear modular hash, number
+theoretical transform, privacy ampliﬁcation, quantum key
+distribution.
+I. I NTRODUCTION
+QUANTUM key distribution (QKD) is a notable technique
+which exploits the principle of quantum mechanics to
+perform the information theoretical secure key distribution be-
+tween two remote parties, named Alice and Bob [1]. QKD can
+be divided into discrete variable (DV) QKD and continuous
+variable (CV) QKD. A QKD system can be divided into two
+parts, the quantum optical subsystem and the post-processing
+subsystem. The quantum optical subsystem is in charge of
+Manuscript received 17 June 2022; revised 19 August 2022; accepted 7
+October 2022. Date of publication 14 October 2022; date of current version
+1 January 2023. This work was supported by the National Natural Science
+Foundation of China under Grant 62071151. (Corresponding author: Qiong
+Li.)
+Bing-Ze Yan, Qiong Li, Hao-Kun Mao, and Hong-Wei Xu are with the Faculty
+of Computing, Harbin Institute of Technology, Harbin, Heilongjiang 150000,
+China (e-mail: ybz_hit53@163.com; qiongli@hit.edu.cn; mao_hit@qq.com;
+winaaa@163.com).
+Ahmed A. Abd El-Latif is with the EIAS Data Science Lab, College of
+Computer and Information Sciences, Prince Sultan University, Riyadh 11586,
+Saudi Arabia, and also with the Department of Mathematics and Computer
+Science, Faculty of Science, Menouﬁa University, Al Minuﬁyah 32511, Egypt
+(e-mail: a.rahiem@gmail.com).
+Color versions of one or more ﬁgures in this article are available at
+https://doi.org/10.1109/JLT.2022.3214440.
+Digital Object Identiﬁer 10.1109/JLT.2022.3214440preparation, transmission and measurement of quantum states.
+The post-processing subsystem mainly conducts error correction
+and privacy ampliﬁcation [2].
+Privacy ampliﬁcation is a necessary part of the post-
+processing subsystem in quantum key distribution [3]. It is an
+art of distilling a highly secure key from a partially secure string
+by public discussion between two parties. PA requires high
+throughput to ensure timely processing of input key, and the
+input block size of PA has signiﬁcant impact on the ﬁnal key rate
+of QKD system due to the ﬁnite-size effect [4], [5]. Therefore,
+throughput and input block size are two key indicators of PA.
+Field-programmable gate array (FPGA) is a popular platform
+to design QKD systems, including PA. It has a high integration
+density and can handle both the system control task and the cal-
+culation task on one chip. Furthermore, the power consumption
+of a FPGA is much lower than that of other platforms. However,
+low throughput and small input block size of PA are still the
+main bottleneck of the FPGA-based QKD system.
+Several FPGA-based post-processing subsystems and PA
+schemes have been designed for high-performance QKD sys-
+tems [6], [7], [8], [9]. The small input block size is the most
+critical problem of FPGA-based PA schemes. The largest input
+block size of existing FPGA-based PA schemes is 106[8],
+[9], while 106is only the minimum requirement of a common
+QKD system. The input block size is expected to be much
+larger than 106to realize a negligible ﬁnite size effect on the
+secure key rate in a high-performance QKD system [10]. The
+throughput of FPGA-based PA schemes is also insufﬁcient for
+high-performance QKD system. The highest throughputs of
+existing FPGA-based PA schemes are 116 Mbps with the block
+size of106[9] and 186 Mbps with the block size of 349,952 [8].
+However, as the repetition frequency of QKD systems increases
+and wavelength division multiplexing technology develops, the
+raw key rate of a QKD system may exceed several gigabits per
+second and the throughput of a PA scheme is required to the
+same order of magnitude [11].
+In this paper, a large-scale and high-speed (LSHS) FPGA-
+based privacy ampliﬁcation (PA) scheme is presented. Its
+throughput exceeds 1.5 Gbps and its input block size is close
+to108. An FPGA-based hybrid hash PA algorithm combining
+multilinear modular hash and modular arithmetic hash (MMH-
+MH) is designed for our scheme [12]. This algorithm achieves
+the best computation complexity O(nlogn)with the optimiza-
+tion method based on number theoretic transform (NTT) [13].
+Besides, an NTT-reusable structure and its control unit for
+our scheme is designed to reduce the resource consumption.
+0733-8724 © 2022 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:07:09 UTC from IEEE Xplore.  Restrictions apply. 170 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 41, NO. 1, JANUARY 1, 2023
+A memory-saving and efﬁcient modular accumulation unit for
+multilinear modular hash and a pipelined binary modulo unit
+for modular arithmetic hash are designed to further reduce the
+resource consumption. Beneﬁt from above optimization strate-
+gies, the resource consumption is so economical that there is
+no need of any external storage. This scheme is implemented
+on a Xilinx ZYNQ ultrascale+ FPGA, and the performance of
+our scheme is adequately evaluated. Experiment results indicate
+that the throughput of this scheme exceeds 1.5 Gbps and the
+input block size of this scheme is close to 108. To the best of our
+knowledge, our scheme outperforms existing FPGA-based PA
+schemes by over an order of magnitude in terms of throughput
+and input block size.
+The rest of this paper is organized as follows. The FPGA-
+based MMH-MH PA algorithm is designed as a basis for this
+work in Section II. The structure and optimization strategies of
+our scheme are designed in Section III. The performance and
+resource cost of our scheme are evaluated in Section IV.
+II. MMH-MH PA A LGORITHM
+An FPGA-based MMH-MH PA algorithm is designed in this
+section. It is the foundation of the LSHS PA scheme.
+The main process of a typical PA algorithm is compressing
+the input sequence with a hash function randomly chosen from
+a universal hash family [14]. both the multilinear modular hash
+and the modular arithmetic hash are universal hash families.
+The multilinear modular hash can not only split the input key
+and handle it separately but also compress the input key from a
+binary sequence with length nto a2B-nary sequence with length
+n/B . The computation complexity of multilinear modular hash
+can be reduced to O(nlogn)by NTT-based optimization [15].
+Therefore, the calculation amount of multilinear modular hash
+is much lower than other universal hash family. However, the
+output set of the multilinear modular hash is a ﬁxed prime
+ﬁeld, which is unﬁt for PA. Therefore, we designed a new
+PA algorithm combining the multilinear modular hash and the
+modular arithmetic hash, which utilizes the variable length bit
+output set of the modular arithmetic hash.
+The MMH-MH PA algorithm performs the compression twice
+with different universal hash families instead of once. The main
+steps of MMH-MH PA algorithm are indicated as Fig. 1, where
+nis the length of input sequence. ris the length of ﬁnal key. The
+deﬁnition of multilinear modular hash and modular arithmetic
+hash are given as follow.
+a) Deﬁnition of Multilinear Modular Hash: Letpb eap r i m e r
+and letkbe an integer k>0. Deﬁne a family of multilinear
+modular hash functions from Zk
+ptoZpas follows:
+MMH :=/braceleftbigga:Zk
+p→Zp/vextendsingle/vextendsinglea∈Zk
+p/bracerightbig
+, (1)
+where the function gais deﬁned for any a=/angbracketlefta1,...,a k/angbracketright,
+x=/angbracketleftx1,...,x k/angbracketright,ai,xi∈Zp,xmeans the input variable of
+the function ga, andais a random seed to choose the function
+ga,
+ga(x): =a·xmodp=k/summationdisplay
+i=1aiximodp. (2)Fig. 1. Main steps of MMH-MH PA algorithm.
+MMH family is an universal hash family, its collision proba-
+bilityδis1/|Zp|, and the proof can be found in [16].
+b) Deﬁnition of Modular Arithmetic Hash: Letαandβbe two
+positive integers, α>β . Deﬁne a family of modular arithmetic
+hash functions from 2αto2βas follows:
+MH :={hb,c:Z2α→Z2β|b,c∈Z2α,gcd(b,2) = 1},(3)
+where the function hb,cis deﬁned as follows:
+hb,c(x): =(b·x+cmod 2α)/2α−β. (4)
+The speciﬁc process of the FPGA-based MMH-MH PA al-
+gorithm is given as Algorithm 1. We designed a NTT-based op-
+timization to reduce the computation complexity of the MMH-
+MH PA algorithm to O(nlogn). In details, the prime number p
+is suggested to be a Mersenne prime. The form of a Mersenne
+prime is Mγ=2γ−1. The length of input sequence is n=
+γ×k.xi=2γ−1is a special case, and the data xi=2γ−1
+should be cast away and reload.
+Because the process of MMH-MH PA is different from that
+of traditional PA algorithms, we have proven that the security of
+MMH-MH PA is similar with other PA algorithms in [17].
+III. L ARGE -SCALE AND HIGHSPEED PA S CHEME ON FPGA
+The LSHS PA scheme on the FPGA is designed based on
+MMH-MH PA algorithm in this section. NTT is a major part
+of the FPGA MMH-MH PA algorithm according to Section II.
+It is the core operation of both MMH function and MH func-
+tion. Therefore, we designed an NTT-reusable structure and its
+control unit for the scheme, and we introduced the calculation
+method of key parameters in this scheme. Afterwards, the design
+method of main units is illustrated. The most important unit
+is the NTT-based optimization unit. It deeply determines the
+performance of the whole scheme. A 64 K NTT processor is
+implemented to support a maximum 768 Kb input block size. In
+addition, it can optimize computation resource cost according
+to the real-time performance requirement by adjusting the radix
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:07:09 UTC from IEEE Xplore.  Restrictions apply. YAN et al.: LARGE-SCALE AND HIGH-SPEED FPGA-BASED PRIV ACY AMPLIFICATION FOR QUANTUM KEY DISTRIBUTION 171
+Algorithm 1: MMH-MH PA Algorithm.
+Input: Input Data: x∈Z2k×γ.
+Random Seeds: a∈Zk
+p,b,c∈Z2γ,gcd(b,2) = 1 .
+//p=Mγ=2γ−1
+Output:z∈Z2β//γ>β
+1:x=/angbracketleftx1,...,x k/angbracketright//split data x
+2:a=/angbracketlefta1,...,a k/angbracketright//split data a
+3:ifxi=2γ−1(i=1,...,k )then
+4: break; //Reload data xi
+5:else
+6:fori=0tokdo
+7:y/prime
+i=NTT(xi)×NTT(ai)
+8:yi=INTT(y/prime
+i)
+9:end for
+10:y=/summationtextk
+i=1yimodp/*MMH function: y=ga(x)*/
+11:z/prime=NTT(y)×NTT(b)
+12:z/prime/prime=INTT(z/prime)
+13:z=(z/prime/prime+cmod 2α)/2α−β
+/*MH function: z=hb,c(y)*/
+14: end if
+Fig. 2. Architecture of large-scale PA scheme. →means the data ﬂow of MMH
+function and →means the data ﬂow of MH function.
+of NTT. Then we designed a memory-saving modular accumu-
+lation unit for multilinear modular hash and a pipelined binary
+modular addition unit for modular arithmetic hash to improve
+overall performance.
+The architecture of the LSHS PA scheme is indicated as Fig. 2.
+The NTT-based optimization unit is reused in this architecture
+to reduce the resource cost. There are two streams of data ﬂow in
+this scheme, and they represent the MMH function data stream
+and MH function data stream. Then we introduced the key
+parameter calculation and three key units design in the following
+subsection.
+A. Key Parameter Calculation of the LSHS PA Scheme
+The sub-block size γand the sub-block number kare the most
+critical parameter in this scheme. Because the input block size
+n=γ×kis the main optimization target, γandkare expected
+to be as larger as possible. γis restricted by two conditions:
+1)2γ−1should be a primer; 2) 2γ−1should be less thanthe largest input block size Nsupported by the NTT-based
+optimization unit.
+The input block size Nof the NTT-based optimization unit in
+our implementation scheme is 2786432−1, so the sub-block size
+γcan be chosen as 756839 ( 2756839−1is the 32nd Mersenne
+prime).
+The sub-block number kis restricted by the compression ratio
+RPAof PA (The calculation method of rcan be referred to
+in [17]), and 1/kshould be larger than RPA. The compression
+ratioRPAis affected by the speciﬁc QKD system and transmis-
+sion distance, so the speciﬁc value of kwill be discussed in next
+section.
+Then we elaborate the design of three main modules of this
+scheme: 1) the NTT-based optimization unit; 2) the memory-
+saving modular accumulation unit for multilinear modular hash
+3) the pipelined binary modular addition unit for modular arith-
+metic hash.
+B. Design of NTT-Based Optimization Unit
+The NTT-based optimization is the most essential and com-
+plex unit in this scheme. The input size of the NTT-based
+optimization unit is 786432 bits. It is implemented based on the
+radix-16 NTT processor. The NTT-based optimization process
+can be summarized as follows:
+1) Break the large numbers XandYinto a sequence of words
+x(n)andy(n)using base B:X=/summationtextxi×BiandY=/summationtextyi×Bi.
+2) Compute the dot product of NTT results NTT(X)and
+NTT(Y):Z/prime
+i=NTT(X)i×NTT(Y)i.
+3) Compute the inverse NTT (INTT) : Z/prime/prime=INTT(Z/prime).
+4) Resolve the carries: let Z/prime/prime
+i+1=Z/prime/prime
+i+1+Z/prime/prime
+i/B, andZi=
+Z/prime
+imodB.
+The base B=2 4 and the sequence size n= 32768 ,s ot h e
+input size of the NTT is n×B= 786432 . NTT and INTT are
+the main parts in this algorithm, and a 65536-point NTT and
+65536-point INTT are required. An N-point NTT is deﬁned as:
+Xk=N−1/summationdisplay
+n=0xn(WN)nkmodp.
+And an N-point INTT is deﬁned as:
+xk=N−1N−1/summationdisplay
+n=0Xn(WN)−nkmodp.
+To simplify the modulo operation, pis chosen as a special
+primer,p=264−232+1. One data point in NTT, NTT(X)i,
+is represented as a 64-bits digit. So the largest data point is
+NTT(X)i×NTT(Y)i, which is a 128-bits digit and repre-
+sented as 296a+264b+232c+d. It can be rewrite as,
+296a+264b+232c+d(modp)
+≡−1(a)+(232−1)b+(232)c+d
+≡(232)(b+c)−a−b+d.
+The computation complexity of directly computing NTT is
+too excessive, so the butterﬂy algorithm is required to reduce
+it. The radix is an important parameter of butterﬂy algorithm.
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:07:09 UTC from IEEE Xplore.  Restrictions apply. 

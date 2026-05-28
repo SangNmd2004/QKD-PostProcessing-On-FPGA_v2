@@ -1,0 +1,266 @@
+JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 38, NO. 15, AUGUST 1, 2020 3935
+High-Speed Post-Processing in Continuous-Variable
+Quantum Key Distribution Based on
+FPGA Implementation
+Shen-Shen Yang , Zhen-Guo Lu, and Yong-Min Li
+Abstract —In a continuous-variable quantum key distribution
+(CV-QKD) system, the computation speed of the post-processing
+procedure, including information reconciliation (IR) and privacy
+ampliﬁcation (PA), inevitably affects the practical secret key rate.
+IR and PA can be implemented in parallel using low-density parity-
+check (LDPC) codes and hash functions, respectively. We achieve
+high-speed hardware-accelerated post-processing procedure for
+Gaussian symbols on a ﬁeld-programmable gate array (FPGA) by
+taking advantage of its superior parallel processing ability. To this
+end, the sum-product algorithm decoders and a modiﬁed LDPC
+codes construction algorithm adapted to FPGA’s characteristics
+are developed and employed. Two different structures including
+multiplexing and non-multiplexing are designed to achieve the
+trade-off between the speed and area of FPGAs, so that an op-
+timal scheme can be adopted according to the requirement of
+a practical system. Simulation results show that the maximum
+throughput can reach 100 M symbols/s. We veriﬁed the correctness
+of the post-processing procedures when implemented on the Xilinx
+VC709 evaluation board, which is populated with the Virtex-7
+XC7VX690T FPGA and provided some possible solutions to obtain
+better performance when more advanced FPGAs are available. The
+scheme can be applied readily for real-time key extraction and
+effectively reduce power consumption of the CV-QKD system.
+Index T erms —Continuous-variable quantum key distribution
+(CV-QKD), FPGA, post-processing, real-time.
+I. I NTRODUCTION
+IN QUANTUM key distribution (QKD) [1]–[6], Alice sends
+quantum states in which keys are encoded to Bob through
+a quantum channel, and Bob measures the received states with
+random bases. Then, a secret key secure in the information-
+theoretic sense can be extracted and shared between Alice and
+Bob. A QKD system typically includes three steps: (1) quantum
+Manuscript received January 16, 2020; revised February 28, 2020 and March
+29, 2020; accepted March 30, 2020. Date of publication April 6, 2020; date of
+current version July 23, 2020. This work was supported in part by the National
+Key R&D Program of China under Grant 2016YFA0301403, in part by the
+National Natural Science Foundation of China (NSFC) under Grant 11774209
+and Grant 61378010, in part by the Key R&D Project of Shanxi Province
+under Grant 201803D121065, and in part by the Shanxi under Grant 1331KSC.
+(Corresponding author: Y ong-Min Li.)
+The authors are with the State Key Laboratory of Quantum Optics and
+Quantum Optics Devices, Institute of Opto-Electronics, Collaborative Inno-
+vation Center of Extreme Optics, Shanxi University, Taiyuan 030006, China
+(e-mail: 201612607013@email.sxu.edu.cn; 201812607010@email.sxu.edu.cn;
+yongmin@sxu.edu.cn).
+Color versions of one or more of the ﬁgures in this article are available online
+at http://ieeexplore.ieee.org.
+Digital Object Identiﬁer 10.1109/JLT.2020.2985408state preparation, distribution, and measurement; (2) data sifting
+and parameter estimation; and (3) post-processing procedure.
+The last can be divided into two main parts, information recon-
+ciliation (IR), in which Alice and Bob use error correction codes
+(ECCs) to correct errors in sifted keys to obtain identical cor-
+rected keys, and privacy ampliﬁcation (PA), which eliminates the
+leaked information by using universal classes of hash functions
+to map long-corrected keys to shorter secure keys.
+There are three types of QKD protocols [2]: discrete-variable
+QKD (DV-QKD), continuous-variable QKD (CV-QKD) [3]–
+[5], and distributed phase reference QKD (DPR-QKD) [7].
+CV-QKD has attracted much attention in recent years, mainly
+because its information is encoded in the amplitude and phase
+quadratures of quantum states so that high-sensitive low-noise
+heterodyne or homodyne detection techniques can be employed.
+It also has potential higher secret key rates over metropolitan
+areas. However, the IR procedure in CV-QKD systems is rela-
+tively sophisticated since it works in low signal-to-noise ratio
+(SNR) conditions. With the progress of experimental research
+[8]–[11], the system’s repetition rate is becoming increasingly
+higher, and the data throughput of the post-processing procedure
+must be fast enough; otherwise, it will reduce the actual key rate.
+Several schemes have been proposed for IR of Gaussian sym-
+bols, such as slice reconciliation [12]–[15], multidimensional
+reconciliation [16]–[18], and other schemes [19], [20], which
+are applicable to a certain range of SNRs. As shown in Fig. 1,
+the slice reconciliation can obtain a higher secret key rate in
+the case of shorter distance and larger SNR (from 1 to 15),
+while multidimensional reconciliation, usually combined with
+multi-edge type low-density parity-check (LDPC) codes [17],
+[21], [22] or Raptor codes [23], [24], is optimal for a smaller
+SNR from 0.01 to 1 and is limited to 1 bit per pulse. For IR in
+CV-QKD, very large block ECCs are usually required to achieve
+high reconciliation efﬁciency on the additive white Gaussian
+noise channel (AWGNC). Because of the large block codes
+and many iterations required in IR, the throughputs of the error
+correction algorithms is very limited on a central processing unit
+(CPU). One feasible way to improve the throughput is to exploit
+hardware-based acceleration. Based on graphics processing unit
+(GPU), a throughput of 9.17 Mb/s is obtained for multidimen-
+sional reconciliation [22]. This record is further improved to
+30.39 Mb/s [25] (also based on a GPU). Currently, high-speed
+slice reconciliation based on hardware acceleration has not been
+achieved.
+0733-8724 © 2020 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:07:03 UTC from IEEE Xplore.  Restrictions apply. 3936 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 38, NO. 15, AUGUST 1, 2020
+Fig. 1. Performance of slice reconciliation vs multidimensional reconciliation
+with the same reconciliation efﬁciency β= 95% . Other parameters are excess
+noiseξ=0.01, efﬁciency of receiver’s detector η=0.64, electronic noise at
+Bob’s side Vel=0.1.
+Field-programmable gate arrays (FPGAs) are very attractive
+when designing prototypes [26]–[29] and manufacturing small-
+production-run devices, and their in-system programmability
+makes them substantially cost-effective. In addition, FPGAs
+are good at binary operations and can conﬁgure the degree
+of parallelism more ﬂexibly, so that it facilitates control over
+the trade-off between data throughput and hardware resource
+requirements. Furthermore, the power consumption of an FPGA
+is much lower than that of a GPU and other hardware.
+In this work, we achieve a high-speed post-processing pro-
+cedure based on FPGA hardware acceleration. To this end, the
+sum-product algorithm decoders and a modiﬁed LDPC codes
+construction algorithm adapted to FPGA characteristics are
+developed and employed. Two different structures, including
+multiplexing and non-multiplexing, are designed to achieve
+the trade-off between the area and speed of FPGAs, so that
+one can adopt optimal schemes according to the requirements
+of a practical system. By implementing multiple code words
+decoding simultaneously, the throughput of slice reconciliation
+can reach 100 M symbols/s on a Xilinx Virtex-7 FPGA. Finally,
+we integrate IR and PA [30] to realize a complete real-time
+post-processing procedure.
+The rest of this paper is organized as follows. In Section II,
+we brieﬂy review the post-processing procedure in a CV-QKD
+system. Then, we present the two different structures of the
+post-processing procedure and the design of LDPC decoders in
+Section III. In Section IV, we present detailed implementation
+results for the post-processing procedure on FPGA. In Section V,
+we give a brief summary and discussion.
+II. P OST-PROCESSING IN CV-QKD
+Fig. 2 shows a typical structure of the post-processing pro-
+cedure with reverse slice reconciliation and PA in CV-QKD
+systems. In the IR part, LDPC codes are employed to achieveFig. 2. Schematic of the post-processing with slice reconciliation and PA in
+the CV-QKD system. {Bi}are the levels corresponding to the less signiﬁcant
+bits, and{Si}are the syndromes of the signiﬁcant bits calculated according to
+the parity-check matrix of LDPC codes.
+Fig. 3. Slice reconciliation based on ﬁve levels of encoding and decod-
+ing.RawKeyX andYare correlated Gaussian symbols obtained after base
+sifting in a CV-QKD system. Quantizer is used to quantize the Gaussian
+symbolsYand obtain ﬁve bit strings L1,L2,L3,L4,a n dL5;S4andS5are
+syndromes generated by LDPC encoding modules Encoder of levels 4 and
+5, respectively; L/prime
+4andL/prime
+5are corrected secret keys output from the LDPC
+decoding modules Decoder of levels 4 and 5.
+high-speed and high-efﬁciency IR. The PA is implemented by
+the Toeplitz matrix, which is a special universal hash function.
+A. Slice Reconciliation Protocol
+Slice reconciliation [12]–[15] is an error correction scheme
+for Gaussian symbols using binary error correcting codes. It
+works in different ways on both parties; see Fig. 3 for a schematic
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:07:03 UTC from IEEE Xplore.  Restrictions apply. YANG et al. : HIGH-SPEED POST-PROCESSING IN CONTINUOUS-V ARIABLE QUANTUM KEY DISTRIBUTION 3937
+description of the slice reconciliation. For reverse slice recon-
+ciliation, Bob uses the quantizing function Q:R→{0,1}mto
+transform each continuous Gaussian variable Yiinto anm-bit
+label{Bj(Yi)},j=1,...,m . Next, Bob uses multilevel coding
+(MLC) by encoding each individual level jof label bits inde-
+pendently as the syndrome of an error correcting code with rate
+Rj(1≤j≤m). To recover Bob’s m-bit label {Bj}, the sender
+Alice employs multistage decoding (MSD) using its own source
+Xas side information. Finally, the two parties share identical
+corrected keys.
+In our scheme, raw key Yare quantiﬁed to ﬁve levels. The
+information included in the ﬁrst three levels is very small and
+disclosed directly, and the latter two levels are encoded and suc-
+cessively decoded. More precisely, Bob must send the quantized
+bit strings {B1(Yi)},{B2(Yi)}, and{B3(Yi)}of the ﬁrst three
+levels and the syndromes S4andS5of the last two levels to Alice.
+For simplicity, hereafter we use L1,L2, andL3to represent
+{B1(Yi)},{B2(Yi)}, and{B3(Yi)}.
+The efﬁciency βof the slice reconciliation is given by
+β=H[Q(Y)]−m+/summationtextm
+i=1Ri
+I(X;Y), (1)
+whereQ(Y)is the discrete symbol by quantizing Y,H[Q(Y)]
+is the information entropy of Q(Y), andI(X;Y)is the mutual
+information between Alice and Bob.
+B. Standard LDPC Codes
+LDPC codes [31] is a good performance error correction code
+and can be used to achieve high-efﬁciency IR very close to
+the Shannon limit. The performance of LDPC decoders greatly
+affects the reconciliation efﬁciency in CV-QKD. To implement
+LDPC decoders based on hardware, the approaches of each step
+should be carefully designed to achieve the best performance,
+including decoding algorithms, message propagation schedule,
+construction of check matrix, and so on.
+1) Decoding Algorithms: LDPC codes are usually decoded
+using a belief propagation (BP) algorithm, in which messages
+typically in the form of a logarithmic-likelihood ratio (LLR) are
+iteratively passed in both directions along the edges between
+connected nodes.
+The two most dominating LDPC decoding algorithms are
+the sum-product algorithm (SPA) and the min-sum algorithm
+(MSA). Note that two modiﬁcations of the MSA, called the
+normalized MSA and offset MSA [32], have been proposed to
+improve performance. Although MSAs are easy to implement
+on FPGA, the highest reconciliation efﬁciency in our test that
+can be achieved is less than 90%. Therefore, the SPA is chosen
+in our design.
+2) Message Propagation Schedule [33]: The schedule of the
+LDPC decoding process determines the order in which variable
+nodes and check nodes are processed, as well as whether mul-
+tiple nodes are processed in parallel. Flooding, layered belief
+propagation (LBP) [34], and informed dynamic scheduling are
+three widely used schedules. LBP tends to converge to the
+correct code word with fewer iterations and therefore has lower
+computational complexity, and the memory size required for aLBP decoder is half of that required for a ﬂooding decoder. In
+consideration of these features, the LBP schedule is adopted in
+our scheme.
+3) Construction of P arity Check Matrix (PCM): In addition
+to the size of matrix block and the degree distributions of its
+nodes, the position of the edges also has a signiﬁcant impact on
+error correction performance. A number of techniques have been
+proposed, such as random construction, the progressive edge
+growth (PEG) algorithm, and quasi-cyclic (QC) codes. Previous
+work showed that the PEG algorithm has better performance at
+SNR∼3 [14], while random construction exhibits better perfor-
+mance at SNR ∼1 [15]. QC codes are deﬁned by a parity-check
+matrix constructed from an array of q×qcyclically shifted
+identity matrices or q×qzero matrices. QC codes impose a
+highly regular parity-check matrix structure with a sufﬁcient
+degree of randomness offset to achieve near-Shannon-limit er-
+ror correction performance while reducing the implementation
+complexity of the decoder. QC codes also reduce data permu-
+tation and memory access complexity by eliminating random,
+unordered memory access patterns.
+In the proposed scheme, a small base matrix is ﬁrst con-
+structed using the PEG algorithm or random construction, de-
+pending on the speciﬁc SNRs, and a large block matrix is succes-
+sively obtained by quasi-cyclic expansion. When implementing
+the LDPC decoders based on FPGA, there are inevitably some
+clock delays between the writing and reading of LLR data
+during the calculating procedure. To use the pipeline structure
+to improve the throughput, the structure of the matrix must have
+enough interval between the two nodes in the same column to
+avoid read-write conﬂicts.
+C. Practical Secret Key Rate
+Accounting for the ﬁnite-size effects [35], the secret key
+rate of a reverse reconciliation CV-QKD system is given by
+Kfinite=(n/N)(βIAB−χBE−Δ(n)), wherenis the num-
+ber of data used to distill the secret key, Nis the number of sifted
+data after quantum transmission and measurement, N−nis the
+number of data used for parameter estimation, IABis the mutual
+information between Alice and Bob, χBEis the Holevo bound,
+andΔ(n)is the ﬁnite-size offset factor.
+In the above, the secret key rate is derived without consider-
+ing the actual throughput of the post-processing procedure; in
+other words, we assume that the post-processing procedure is
+real-time. In a practical QKD system, the computation time of
+the post-processing procedure is limited. More precisely, the
+practical key rate is affected by a factor α=PP out/PP in,
+wherePP inandPP outrepresent the post-processing input and
+output rates, respectively [36]. In general, we have 0<α≤1.
+Furthermore, raw key blocks incorrectly decoded in a QKD
+system are usually simply discarded by the sender and receiver.
+As a result, the ﬁnal key rate are also affected by the frame error
+rate (FER) of the LDPC decoder.
+Taking into account all the previous factors in the CV-QKD
+system, the practical secret key rate is given by
+Kprac=α(1−FER)/parenleftBign
+N/parenrightBig
+(βIAB−χBE−Δ(n)).(2)
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:07:03 UTC from IEEE Xplore.  Restrictions apply. 

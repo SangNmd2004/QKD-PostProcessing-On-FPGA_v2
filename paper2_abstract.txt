@@ -1,0 +1,280 @@
+3786 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 40, NO. 12, JUNE 15, 2022
+A Code Rate-Compatible High-Throughput
+Hardware Implementation Scheme for QKD
+Information Reconciliation
+Ming Zhu, Ke Cui , Simeng Li, Lei Kong , Shibiao Tang, and Jian Sun
+Abstract —For high-speed quantum key distribution (QKD) post
+processing, information reconciliation is the most computational
+step, which usually acts as the system speed bottleneck. Reconcil-
+iation efﬁciency and operation throughput are the two most im-
+portant performance parameters, but they are often compromised
+to each other in actual realization due to the available hardware
+resources. Another characteristic of the information reconciliation
+is that its channel is time-varying, and in order to guarantee high
+efﬁciency, some rate-compatible error correction scheme should
+be adopted. To cope with the above problems, this paper proposes
+a rate-compatible high-efﬁciency reconciliation algorithm based
+on quasi-cyclic (QC) low-density parity-check (LDPC) codes and
+puncturing algorithms. On the other hand, in order to obtain high
+throughput while maintaining low implementation complexity, the
+normalized min-sum algorithm (NMSA) is realized and optimized
+by using the fast prototyping tool of high-level synthesis (HLS).
+The proposed information reconciliation module was implemented
+on the Xilinx Zynq Ultrascale +ZCU102 development board. Ex-
+perimental results show that the maximum throughput rate of the
+implemented reconciliation module in this paper can reach 136
+Mbps, while the efﬁciency factor is kept lower than 1.32 across the
+error rate range of 1.7% ∼10.6% under the remaining frame error
+rate level of 10−3. The comprehensive good performance obtained
+by our design can strongly support the development of modern
+high-speed QKD systems.
+Index Terms —FPGA, HLS, information reconciliation, LDPC,
+puncturing, QKD.
+I. I NTRODUCTION
+QUANTUM key distribution (QKD) [1] allows two legal
+parties, namely Alice and Bob, to achieve absolutely
+secure shared keys even when the eavesdropper can perform
+arbitrary operations on the channel. The security of the QKD
+system is based on the quantum mechanics, and its security
+cannot be diminished by the computation power [2], [3].
+Manuscript received October 13, 2021; revised January 23, 2022; accepted
+February 3, 2022. Date of publication February 8, 2022; date of current version
+June 16, 2022. This work was supported by the Foundation Enhancement Pro-
+gram of Science and Technology Commission under Grant 2019-JCJQ-JJ-356.
+(Corresponding author: Ke Cui.)
+Ming Zhu, Ke Cui, Simeng Li, and Lei Kong are with the School of Elec-
+tronic and Optical Engineering, Nanjing University of Science and Technology,
+Nanjing 210094, China (e-mail: njustcuik@njust.edu.cn).
+Shibiao Tang and Jian Sun are with the QuantumCtek Company, Ltd., Hefei,
+Anhui 230088, China.
+Color versions of one or more ﬁgures in this article are available at
+https://doi.org/10.1109/JLT.2022.3149567.
+Digital Object Identiﬁer 10.1109/JLT.2022.3149567A typical QKD post-processing [4] mainly includes four
+steps: (1) basis sifting (2) identity authentication (3) information
+reconciliation and (4) privacy ampliﬁcation. The information
+reconciliation [5]–[9] is needed due to the inconsistent keys
+between Alice and Bob, which is caused by the inﬂuence of
+channel noise or eavesdropper’s monitoring. The information
+reconciliation is the most computational unit of the post process-
+ing, which usually acts as the speed bottleneck in achieving high-
+throughput post processing capability. Nowadays, by integrating
+ultra-high repetition lasers and superconductive single-photon
+detectors into QKD system [10], higher key generation rate is
+putting forward tenser requirements on the QKD post processing
+[11], which stimulates the development of high throughput
+information reconciliation implementations.
+The ﬁrst proposed information reconciliation scheme for
+QKD system is the BBBSS [12] protocol, which uses a single-bit
+parity check code as the error correction code. The protocol is
+simple and intuitive but makes itself hard to achieve high recon-
+ciliation efﬁciency. Then the Cascade protocol is proposed [13],
+[14] which is widely adopted by many practical QKD systems
+due to its high efﬁciency with the reconciliation efﬁciency factor
+fbeing 1.1∼1.3 (the deﬁnition of fcan be found in Section II).
+But the Cascade requires multiple interactions during error cor-
+rection, which greatly limits the reachable implementation speed
+especially for the QKD systems with high network latency. The
+Winnow protocol [15] was proposed to overcome the multiple
+interaction problem, which can obtain higher throughput, but
+its efﬁciency performance is not as good as the Cascade with
+fbeing about 1.5. In recent years, the LDPC code [16] begins
+to be adopted in the QKD system due to its excellent perfor-
+mance [17], [18], including the approaching-the-Shannon-limit
+code capacity, one-time interaction, and high-parallelization-
+potential decoding algorithm. For practical QKD system, the
+channel bit error rate may change within a relatively large range,
+but the ﬁxed rate LDPC code can only maintain high recon-
+ciliation efﬁciency in a narrow bit error rate interval. In order
+to be adapted to the channel error rate variance, it is possible
+to include several rates of LDPC code by integrating multiple
+LDPC matrixes, but this calls for very strict and challenging
+requirements of the high-performance LDPC matrix designs
+(given the particular requirement of the LDPC structure such as
+quasi cyclic (QC) attribute in this paper). Ref. [5] is the pioneer-
+ing work that adopts the code rate adaptive LDPC codes to the
+information reconciliation making the reconciliation efﬁciency
+0733-8724 © 2022 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:06:58 UTC from IEEE Xplore.  Restrictions apply. ZHU et al. : CODE RATE-COMPATIBLE HIGH-THROUGHPUT HARDWARE 3787
+very close to 1. Ref. [6] further to implement the algorithm on
+GPU which achieve the high throughput of tens of megabytes.
+In the recent work of Ref. [9], the authors optimized the variable
+step sizes in the information reconciliation and further improved
+the computation speed. But the adopted rate adjusting method
+in the above works was simple, high efﬁciency could not be
+guaranteed until long code length was applied, which is very
+detrimental to hardware implementation.
+In this paper, by introducing the dedicated puncturing al-
+gorithm [19] to dynamically adjust the LDPC code rate to be
+adapted to the wide channel error rate range, both high recon-
+ciliation efﬁciency and low implementation complexity can be
+realized.
+Among various hardware platforms, the ﬁeld programmable
+gate array (FPGA) holding massive logic elements, rich DSP
+units and large on-chip RAM storage, has the potential to realize
+high-throughput QKD post processing [20]–[22]. The traditional
+FPGA-based hardware design requires the designer to write the
+register transfer level (RTL) by hand, which is a tedious and
+time-consuming task. This brings great burden to the designers
+when frequent system updates or modiﬁcations are needed. But
+the high-level synthesis (HLS) tool emerging in recent years
+provides an efﬁcient and rapid development method which can
+accelerate the process of hardware implementation [23], [24].
+In this paper, aiming to obtain a information reconciliation
+module with both high efﬁciency and high throughput while
+maintaining low design complexity, the QC-LDPC code uti-
+lizing the normalized minimum sum algorithm (NMSA) is
+adopted. The reconciliation protocol is combined with the punc-
+turing technique to be adapted to large channel error rate range.
+The protocol is written in C language and realized by Vivado
+HLS tool which makes the design process rather easy. The
+optimization technique of the HLS to obtain high throughput
+was speciﬁcally investigated in this paper. The proposed infor-
+mation reconciliation module was implemented on the Zynq
+Ultrascale +ZCU102 development board. Experimental results
+show that the maximum throughput rate of the realized module
+can reach 136 Mbps, while the reconciliation efﬁciency factor is
+kept lower than 1.32 across the error rate range of 1.7% ∼10.6%
+under the remaining frame error rate level of 10−3. The compre-
+hensive good performance obtained by our design can strongly
+support the development of modern high-speed QKD systems.
+II. T HEQKD P OST-PROCESSING AND INFORMATION
+RECONCILIATION
+The QKD protocol is composed of the quantum channel
+transmission and the post processing. The role of the ﬁrst part is
+to transmit qubits between Alice and Bob. The role of the second
+part is to extract secure keys from the transferred qubits. The
+post-processing ﬂow is shown in Fig. 1, which mainly includes
+basis sifting, identity authentication, information reconciliation,
+and privacy ampliﬁcation. During the basis sifting, Alice an-
+nounces the used basis to Bob and Bob keeps the corresponding
+qubits which are measured using the same basis as Alice. Identity
+authentication is integrated to prevent the man-in-the-middle
+attack. To eliminate the mismatch of the raw keys between AliceFig. 1. The post-processing ﬂowchart.
+and Bob, the information reconciliation is required to obtain the
+consistent keys shared at both sides. Privacy ampliﬁcation is the
+hashing operation which distills absolutely secure keys from the
+error free bit keys.
+The reconciliation efﬁciency fis usually chosen as the per-
+formance parameter for the information reconciliation [5]. It
+is deﬁned as the theoretical minimal information limit given
+by Shannon entropy divided by the actual leaked information
+during reconciliation process. For the LDPC code, its calculation
+equation is shown as below:
+f=m
+nh(e)=1−R0
+h(e)>1 (1)
+wheremandnare the numbers of the row and column of the
+LDPC check matrix, R0=1−m/n is the code rate, eis the
+channel bit error rate, and h(e)is the Shannon binary entropy:
+h(e)=−elog2e−(1−e)log2(1−e) (2)
+As reﬂected by (1), the fis usually larger than 1 for an actual
+information reconciliation protocol. Therefore, designing some
+reconciliation protocol with fapproaching 1 is the design goal
+from the perspective of reconciliation efﬁciency.
+III. T HEINFORMATION RECONCILIATION PROTOCOL BASED ON
+THEQC-LDPC C ODE AND PUNCTURING TECHNIQUE
+A. The Information Reconciliation Based on the Puncturing
+Technique
+For the LDPC code with a ﬁxed code rate, it exists the maximal
+channel error rate that the LDPC code can cope with for the
+targeted remaining bit error rate (or frame error rate) after error
+correction [25]. Therefore, to cover a large channel error rate
+range, multiple LDPC check matrixes should be used which may
+call for very challenging requirements of the high-performance
+LDPC matrix designs especially when we want to keep the QC
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:06:58 UTC from IEEE Xplore.  Restrictions apply. 3788 JOURNAL OF LIGHTWAVE TECHNOLOGY, VOL. 40, NO. 12, JUNE 15, 2022
+Fig. 2. The ﬂow chart of the information reconciliation with adjustable code rate. X/prime/Y/primeis the raw key before information reconciliation and X / Y is the corrected
+one after information reconciliation. The green box represents that the LDPC decoder is designed by using the HLS tool.
+style of the LDPC codes. Alternatively, another good solution is
+to use a single LDPC check matrix combined with the puncturing
+technique to be adapted to the wide error rate range. [26]–[28].
+The puncturing operation is conducted by deleting pparity
+bits from the mother LDPC code by improving the code rate
+fromr0=k/n tor1=k/(n−p). Recent studies show that
+the puncturing scheme using dedicatedly designed puncture bit
+positions has greatly improved error correction performance
+than the random puncturing scheme. In this paper, the so-called
+grouping and sorting (GS) puncturing algorithm proposed by J.
+Ha [19] is adopted to ﬁnd the optimal puncturing bit positions for
+our information reconciliation protocol. The algorithm is mainly
+divided into two steps: grouping and sorting. By grouping all
+variable nodes using the concept of recovery tree, the variable
+nodes that require the same number of recovery steps are placed
+in the same set. Then the algorithm adjusts the variable nodes
+with more surviving check nodes to the set front during the
+sorting step, so that the variable node that requires less recovery
+steps can be selected ﬁrstly. The maximum achievable code rate
+is expressed by (3) [19]:
+rmax=r0
+1−/summationtextK
+j=1|Gj|/n(3)
+Where r0is the code rate of the mother matrix, Gjrepresents
+the recoverable node set in the j-th step, | Gj| represents the node
+number of the set, and Kpresents the total set number.
+According to (3), it can be determined that for the LDPC check
+matrix with rate of 0.5, the upper code rate limit after puncturing
+isrmax 1 /2=0.78, and for the original code rate of 2/3, the
+corresponding upper code rate limit can reach rmax 2 /3=0.89.
+So by adopting two mother LDPC check matrixes and combined
+with the puncturing technique, a wide code rate between 0.5 and
+0.89 can be obtained. In this work, by aiming at keeping the
+reconciliation efﬁciency lower than about 1.3 and according to
+our simulation results, the following eight puncturing vectors
+(the collection of the puncture bit positions) with the rates of r
+=0.55, 0.6, 0.7, 0.74, 0.78, 0.81, 0.83, 0.84 are calculated and
+pre-stored in hardware.
+Based on the above puncturing technique, the detailed infor-
+mation reconciliation protocol ﬂow is depicted in Fig. 2.
+It mainly contains four steps: 1) the channel error rate is esti-
+mated by exchanging some small number of keys between Alice
+and Bob; 2) according to the initial error rate, the proper target
+code rate is selected, and whether to integrate the puncturing
+technique is determined by referring to the error rate versusefﬁciency curve as shown in Fig. 5 in Section V. The channel
+bit error rate is divided into ten zones which are represented by
+ten curves in Fig. 5, and the labeled code rate of the curve in the
+corresponding error rate zone is chosen as the target for a given
+channel error rate; 3) if the puncturing technique is required, Bob
+sets the bit information to 0 according to the positions recorded
+in the puncture vector; and 4) the LDPC decoder based on the
+HLS is operated (see the next subsection for details) to correct
+errors between Alice and Bob.
+B. The LDPC Decoder
+By balancing the implementation complexity and perfor-
+mance, the QC-LDPC is chosen as the check matrix. The
+QC-LDPC code has regular structural characteristic to make
+itself friendly to hardware implementation. Its check matrix H
+is composed of multiple cyclically shifted sub-matrices. The
+sub-matrix is described by the base matrix H bwhose dimension
+ism∗n. Each element of the H bis a sub-matrix with size of z∗z,
+so the total size of the QC-LDPC is mz∗nz. Each non-negative
+element of H brepresents a circulant matrix of the unit matrix,
+and the value represents the cyclically right shift number. The
+IEEE 802.16E standard LDPC codes [29] with rates of 1/2 and
+2/3A are chosen as the mother matrix. As for the decoding algo-
+rithm, the NMSA is adopted considering its hardware-friendly
+implementation capability and small performance degrade [30]
+compared with the classical logarithmic domain belief propaga-
+tion (BP) decoding algorithm [31].
+The NMSA decoding process contains ﬁve steps: initializa-
+tion, check node update, variable node update, posterior LLR
+update and hard decision. The speciﬁc NMSA decoding ﬂow is
+as following:
+1) Initialization: The prior logarithmic-likelihood ratio
+(LLR) of each variable node is calculated according to (4),
+L0(qij)=L(pi)=l o g2P0
+i
+P1
+i(4)
+whereP0
+i/P1
+iis the probability that the i-th bit is 0/1, piis the
+i-th priori LLR, and qijrepresents that the information is passed
+from the i-variable node to the j-th check node.
+2) Check Node Update: The check-to-variable information
+Lk(rij)is calculated as:
+Lk(rij)=( 1−2Sj)/producttext
+i/prime∈R(j)/isgn/parenleftbig
+Lk−1(qi/primej)/parenrightbig
+×min/vextendsingle/vextendsingleLk−1(qi/primej)/vextendsingle/vextendsingle×α(5)
+Authorized licensed use limited to: Aizu University. Downloaded on April 30,2026 at 07:06:58 UTC from IEEE Xplore.  Restrictions apply. 

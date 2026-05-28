@@ -89,10 +89,12 @@ module tb_system_top;
                 for (i = 0; i < LDPC_BLOCK; i = i + 1) begin
                     wait(s_axis_llr_tready);
                     @(posedge clk);
+                    #1;
                     s_axis_llr_tdata = llr_mem[i];
                     s_axis_llr_tvalid = 1;
                 end
                 @(posedge clk);
+                #1;
                 s_axis_llr_tvalid = 0;
                 $display("Loaded %0d LLR elements.", LDPC_BLOCK);
             end
@@ -102,12 +104,14 @@ module tb_system_top;
                 for (k = 0; k < 1152; k = k + 8) begin
                     wait(s_axis_syn_tready);
                     @(posedge clk);
+                    #1;
                     // Pack 8 syndrome bits into 1 byte
                     s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
                                         syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
                     s_axis_syn_tvalid = 1;
                 end
                 @(posedge clk);
+                #1;
                 s_axis_syn_tvalid = 0;
                 $display("Loaded 144 bytes of Syndrome.");
             end
