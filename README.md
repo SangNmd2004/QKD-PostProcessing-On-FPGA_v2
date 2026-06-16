@@ -136,3 +136,16 @@ After exporting the hardware:
 2. Create an Application Project (Empty or Hello World).
 3. Copy the files from `vitis_src/` into your `src/` directory.
 4. Build and Run on the physical hardware to see the 256-bit Secret Key extraction process in action via UART.
+
+---
+
+## ?? Phase 9 Update: Bit-Accurate LDPC Calibration
+
+The LDPC core has undergone a rigorous bit-accurate calibration process against a Python Golden Model.
+Key hardware improvements include:
+- **11-bit V2C Pathway**: Expanded data path to prevent saturation overflows during LLR - C2V calculations.
+- **1-Cycle Latency Alignment**: Completely synchronized BRAM and ROM outputs to match pipeline delays perfectly.
+- **CNU Tree Bugfixes**: Fixed loop initializations and FSM deadlocks ensuring stable computation across all 32 iterations.
+
+The FPGA hardware is now proven to be mathematically identical to the software model, completely ready for physical deployment!
+

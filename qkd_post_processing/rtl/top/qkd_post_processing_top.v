@@ -106,7 +106,7 @@ module qkd_post_processing_top #(
         .ext_w(3),
         .res_w(8),
         .shift_w(7)
-    ) ir_qc_ldpc (
+    ) u_ldpc_core (
         .clk(clk),
         .rst(rst),
         .start(ldpc_en),
@@ -114,12 +114,9 @@ module qkd_post_processing_top #(
         .ir_success(ir_success),
         .ir_fail_intr(ir_fail_intr),
         .puncture_en(puncture_en),
-        .resume_decoding(resume_decoding)
+        .resume_decoding(resume_decoding),
+        .ldpc_res_out(ldpc_res)
     );
-    
-    // Note: ldpc_res_out cần được trích xuất từ BRAM của lõi Partially Parallel.
-    // Tạm thời giả lập output để pass quá trình Synthesis.
-    assign ldpc_res = {LDPC_BLOCK{1'b0}};
 
     // ==========================================
     // 4. Parallel to AXI-Stream (IR to PA)
