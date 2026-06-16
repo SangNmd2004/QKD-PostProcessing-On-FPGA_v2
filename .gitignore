@@ -38,3 +38,8 @@ venv/
 *paper*abstract*.txt
 *.tcl
 *vivado_block_design_guide*
+
+# AI Debug files
+claude_agent.py
+*.txt
+post_processing_research.md
