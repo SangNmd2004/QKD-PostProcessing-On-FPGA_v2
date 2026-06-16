@@ -6,6 +6,7 @@ output [data_w-1:0] xmag;
 output xsgn;
 
 assign xsgn = x[data_w-1];
-assign xmag = (x[data_w-1]==1)?-x:x;
+// Use One's Complement (~x) instead of Two's Complement (-x) to save an Adder (1 LUT per bit)
+assign xmag = xsgn? (~x) : x;
 
 endmodule

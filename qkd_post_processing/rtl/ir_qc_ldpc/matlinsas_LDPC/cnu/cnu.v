@@ -59,7 +59,8 @@ wire signed [data_w+1:0] tmin_scaled = ( $signed((tmin<<<1)+tmin)>>>2 );
 generate
 for(i=0; i<D; i=i+1) begin :calc_r
     // Uniform Min-Sum Approximation: Only use min1 (tmin_scaled) for all edges
-    assign r[i*res_w +:res_w] = ( (rsgn^qsgn2[i])? -$signed(tmin_scaled) : tmin_scaled );
+    // Use One's complement (~tmin_scaled) instead of Two's complement to save an Adder
+    assign r[i*res_w +:res_w] = ( (rsgn^qsgn2[i])? (~tmin_scaled) : tmin_scaled );
 end
 endgenerate
 
