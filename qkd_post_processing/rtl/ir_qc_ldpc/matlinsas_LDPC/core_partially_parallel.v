@@ -5,7 +5,7 @@ module core_partially_parallel #(
     parameter data_w = 5,
     parameter D_vnu = 6, 
     parameter D_cnu = 8, 
-    parameter ext_w = 3,
+    parameter ext_w = 1,
     parameter res_w = 8,
     parameter shift_w = 7
 )(

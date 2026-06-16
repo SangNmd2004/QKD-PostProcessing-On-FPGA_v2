@@ -7,7 +7,7 @@
 module cnu(en, active, clk, rst, q, r, syn);
 parameter D=8;
 parameter res_w = 8;
-parameter ext_w = 3;
+parameter ext_w = 1;
 parameter idx_w = 3;
 localparam  data_w = res_w + ext_w;
 
@@ -53,16 +53,14 @@ sgn_ram #(.D(D)) SRAM(
 assign tmin = active ? {2'b0, min} : 0;
 assign tmin2 = active ? {2'b0, min2} : 0;
 
+wire signed [data_w+1:0] tmin_scaled = ( $signed((tmin<<<1)+tmin)>>>2 );
+wire signed [data_w+1:0] tmin2_scaled = ( $signed((tmin2<<<1)+tmin2)>>>2 );
+
 generate
 for(i=0; i<D; i=i+1) begin :calc_r
-    sat #(.IN_SIZE(data_w+1), .OUT_SIZE(res_w-1)) SAT (
-        .sat_in(
-            (min_idx == i)?
-            ( (rsgn^qsgn2[i])?( $signed(-((tmin2<<<1)+tmin2))>>>2 ):( $signed((tmin2<<<1)+tmin2)>>>2 ) ):
-            ( (rsgn^qsgn2[i])?( $signed(-((tmin<<<1)+tmin))>>>2 ):( $signed((tmin<<<1)+tmin)>>>2 ) )
-        ),
-        .sat_out(r[i*res_w +:res_w])
-    );
+    assign r[i*res_w +:res_w] = (min_idx == i)?
+            ( (rsgn^qsgn2[i])? -$signed(tmin2_scaled) : tmin2_scaled ):
+            ( (rsgn^qsgn2[i])? -$signed(tmin_scaled) : tmin_scaled );
 end
 endgenerate
 

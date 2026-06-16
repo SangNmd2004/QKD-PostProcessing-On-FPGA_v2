@@ -4,7 +4,7 @@ module cnu_cluster #(
     parameter Zc = 96,
     parameter D = 8,
     parameter res_w = 8,
-    parameter ext_w = 3,
+    parameter ext_w = 1,
     parameter idx_w = 3
 )(
     input  clk,
