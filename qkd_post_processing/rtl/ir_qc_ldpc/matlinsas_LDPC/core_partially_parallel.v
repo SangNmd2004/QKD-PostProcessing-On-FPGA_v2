@@ -56,8 +56,17 @@ module core_partially_parallel #(
     wire [4:0] rom_row = layer_count;
     wire [4:0] rom_col = col_count;
     
-    reg [Zc*(res_w+ext_w)*D_cnu-1:0] q_in_buffer;
-    reg [Zc*res_w*D_cnu-1:0] c2v_new_buffer;
+    reg [Zc*(res_w+ext_w)-1:0] q_in_buffer [0:D_cnu-1];
+    wire [Zc*(res_w+ext_w)*D_cnu-1:0] q_in_buffer_flat;
+    reg [Zc*res_w-1:0] c2v_new_buffer [0:D_cnu-1];
+    wire [Zc*res_w*D_cnu-1:0] c2v_new_buffer_flat;
+    genvar gf;
+    generate
+        for(gf=0; gf<D_cnu; gf=gf+1) begin : flatten_buffers
+            assign q_in_buffer_flat[gf*Zc*(res_w+ext_w) +: Zc*(res_w+ext_w)] = q_in_buffer[gf];
+            assign c2v_new_buffer_flat[gf*Zc*res_w +: Zc*res_w] = c2v_new_buffer[gf];
+        end
+    endgenerate
     reg [3:0] valid_degree_count, write_degree_count;
 
     reg [4:0] col_count_d1, col_count_d2;
@@ -68,7 +77,7 @@ module core_partially_parallel #(
     cnu_cluster #(.Zc(Zc), .D(D_cnu), .res_w(res_w), .ext_w(ext_w), .idx_w(3)) u_cnu_cluster (
         .clk(clk), .rst(rst), .en(1'b1), .active(1'b1),
         .syn_in({Zc{1'b0}}), 
-        .q_in(q_in_buffer), 
+        .q_in(q_in_buffer_flat), 
         .r_out(cnu_r_out)
     );
 
@@ -86,7 +95,7 @@ module core_partially_parallel #(
     wire [Zc*data_w-1:0] llr_din_math;
     wire [Zc*res_w-1:0] c2v_old = c2v_dout[valid_degree_count * Zc*res_w +: Zc*res_w];
     wire [Zc*res_w-1:0] c2v_new_shifted = cnu_r_out[write_degree_count * Zc*res_w +: Zc*res_w];
-    wire [Zc*(res_w+ext_w)-1:0] v2c_old_shifted_block = q_in_buffer[write_degree_count * Zc*(res_w+ext_w) +: Zc*(res_w+ext_w)];
+    wire [Zc*(res_w+ext_w)-1:0] v2c_old_shifted_block = q_in_buffer[write_degree_count];
     
     wire [Zc*(res_w+ext_w)-1:0] shifter_in = (state == LAYER_WRITE) ? llr_new_shifted_array : v2c_array;
 
@@ -162,7 +171,7 @@ module core_partially_parallel #(
                 LAYER_READ: begin
                     llr_we <= 1'b0; c2v_we <= 1'b0;
                     if (col_count == 0) begin
-                        for(i=0; i<D_cnu; i=i+1) q_in_buffer[i*Zc*(res_w+ext_w) +: Zc*(res_w+ext_w)] <= {Zc{11'h3FF}};
+                        for(i=0; i<D_cnu; i=i+1) q_in_buffer[i] <= {Zc{9'h0FF}};
                         valid_degree_count <= 0;
                     end
                     if (col_count < 26) begin
@@ -172,7 +181,7 @@ module core_partially_parallel #(
                         col_count <= col_count + 1;
                     end
                     if (valid_conn && col_count_d1 < 24) begin
-                        q_in_buffer[valid_degree_count * Zc*(res_w+ext_w) +: Zc*(res_w+ext_w)] <= shift_out;
+                        q_in_buffer[valid_degree_count] <= shift_out;
                         valid_degree_count <= valid_degree_count + 1;
                     end
                     if (col_count == 26) col_count <= 0;
@@ -184,7 +193,7 @@ module core_partially_parallel #(
                 LAYER_WRITE: begin
                     if (col_count == 0) begin
                         write_degree_count <= 0;
-                        for(i=0; i<D_cnu; i=i+1) c2v_new_buffer[i*Zc*res_w +: Zc*res_w] <= 0;
+                        for(i=0; i<D_cnu; i=i+1) c2v_new_buffer[i] <= 0;
                     end
                     
                     llr_we <= 1'b0; c2v_we <= 1'b0;
@@ -199,14 +208,14 @@ module core_partially_parallel #(
                         llr_addr_w <= col_count_d1;
                         llr_din <= llr_din_math;
                         
-                        c2v_new_buffer[write_degree_count * Zc*res_w +: Zc*res_w] <= c2v_new_unshifted;
+                        c2v_new_buffer[write_degree_count] <= c2v_new_unshifted;
                         write_degree_count <= write_degree_count + 1;
                     end
                     if (col_count == 26) begin
                         col_count <= 0;
                         c2v_we <= 1'b1;
                         c2v_addr_w <= layer_count;
-                        c2v_din <= c2v_new_buffer;
+                        c2v_din <= c2v_new_buffer_flat;
                         
                         layer_count <= layer_count + 1;
                         if (layer_count == 11) begin
