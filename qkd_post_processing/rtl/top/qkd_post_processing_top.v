@@ -104,7 +104,7 @@ module qkd_post_processing_top #(
         .D_vnu(12),
         .D_cnu(8),
         .ext_w(0), // Failsafe: force ext_w to 0 to save LUTs
-        .res_w(6), // Shrink Check Node message to 6 bits to save LUTs
+        .res_w(5), // Shrink Check Node message to 5 bits to guarantee fitting in ZC702
         .shift_w(7)
     ) u_ldpc_core (
         .clk(clk),
