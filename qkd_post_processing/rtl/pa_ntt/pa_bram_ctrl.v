@@ -2,7 +2,7 @@
 
 module pa_bram_ctrl #(
     parameter DATA_W = 64,
-    parameter BLOCK_SIZE = 32768
+    parameter BLOCK_SIZE = 4096
 ) (
     input wire clk,
     input wire rst,

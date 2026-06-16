@@ -1,9 +1,9 @@
 `timescale 1ns/1ps
 
 module pa_toeplitz_hash #(
-    parameter KEY_LEN = 32768,
+    parameter KEY_LEN = 4096,
     parameter HASH_LEN = 14,
-    parameter NTT_N = 32768,
+    parameter NTT_N = 4096,
     parameter DATA_W = 17 // DATA_SIZE_ARB in defines.v
 ) (
     input clk,
@@ -82,13 +82,13 @@ module pa_toeplitz_hash #(
     
     // Descramble RAM (Ping-Pong or Single since we wait)
     reg [DATA_W-1:0] descramble_ram [0:NTT_N-1];
-    wire [14:0] bit_rev_addr;
+    wire [11:0] bit_rev_addr;
     
-    // Generate bit-reversed address for N=32768 (15 bits)
+    // Generate bit-reversed address for N=4096 (12 bits)
     genvar i;
     generate
-        for (i = 0; i < 15; i = i + 1) begin : bit_rev
-            assign bit_rev_addr[i] = cnt[14 - i];
+        for (i = 0; i < 12; i = i + 1) begin : bit_rev
+            assign bit_rev_addr[i] = cnt[11 - i];
         end
     endgenerate
     
@@ -119,8 +119,15 @@ module pa_toeplitz_hash #(
             case (state)
                 ST_INIT_W: begin
                     // Dummy load for Twiddle factors, Q, and N_INV
-                    ntt_load_w <= 1;
-                    if (cnt == (NTT_N/2 + 2 - 1)) begin
+                    // Pulse ntt_load_w for exactly 1 cycle to prevent re-triggering NTTN.v
+                    if (cnt == 0) begin
+                        ntt_load_w <= 1;
+                    end else begin
+                        ntt_load_w <= 0;
+                    end
+                    
+                    // NTTN.v takes exactly 8192 cycles to finish loading Twiddle factors when RING_DEPTH=12
+                    if (cnt == 8200) begin
                         state <= ST_IDLE;
                         cnt <= 0;
                     end else begin
@@ -140,18 +147,21 @@ module pa_toeplitz_hash #(
                 end
                 
                 ST_LOAD_X: begin
-                    ntt_load_data <= 1;
-                    if (bit_cnt == 0) begin
-                        shift_reg <= mem_dout;
-                        ntt_din <= {{(DATA_W-1){1'b0}}, mem_dout[0]};
-                        mem_addr <= mem_addr + 1; // Fetch next word
+                    if (cnt < NTT_N) begin
+                        ntt_load_data <= 1;
+                        if (bit_cnt == 0) begin
+                            shift_reg <= mem_dout;
+                            ntt_din <= {{(DATA_W-1){1'b0}}, mem_dout[0]};
+                            mem_addr <= mem_addr + 1; // Fetch next word
+                        end else begin
+                            ntt_din <= {{(DATA_W-1){1'b0}}, shift_reg[bit_cnt]};
+                        end
+                        bit_cnt <= bit_cnt + 1; // Overflows at 63
                     end else begin
-                        ntt_din <= {{(DATA_W-1){1'b0}}, shift_reg[bit_cnt]};
+                        ntt_load_data <= 0;
                     end
                     
-                    bit_cnt <= bit_cnt + 1; // Overflows at 63
-                    
-                    if (cnt == NTT_N - 1) begin
+                    if (cnt == NTT_N + 1) begin
                         state <= ST_RUN_NTT;
                         mem_en <= 0;
                         ntt_start <= 1; // Trigger NTT
@@ -184,10 +194,14 @@ module pa_toeplitz_hash #(
                 end
                 
                 ST_LOAD_Y: begin
-                    ntt_load_data <= 1;
-                    ntt_din <= descramble_ram[cnt];
+                    if (cnt < NTT_N) begin
+                        ntt_load_data <= 1;
+                        ntt_din <= descramble_ram[cnt];
+                    end else begin
+                        ntt_load_data <= 0;
+                    end
                     
-                    if (cnt == NTT_N - 1) begin
+                    if (cnt == NTT_N + 1) begin
                         state <= ST_RUN_INTT;
                         ntt_start_intt <= 1;
                     end

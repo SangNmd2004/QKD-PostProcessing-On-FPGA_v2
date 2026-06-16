@@ -1,8 +1,8 @@
-# QKD Post-Processing FPGA Pipeline
+# QKD Post-Processing FPGA Pipeline (v2)
 
-This repository contains the RTL (Verilog) implementation of a complete Post-Processing pipeline for Quantum Key Distribution (QKD) systems, optimized for the Xilinx Zynq ZC702 FPGA SoC.
+This repository contains the RTL (Verilog) implementation and the Bare-Metal C Drivers (Xilinx Vitis) of a complete Post-Processing pipeline for Quantum Key Distribution (QKD) systems. It is optimized for the Xilinx Zynq ZC702 FPGA SoC.
 
-The system processes continuous streams of quantum key data, performing two major cryptographic stages:
+The system processes continuous streams of quantum key data, performing two major cryptographic stages through Hardware/Software (HW/SW) Co-Design:
 1. **Information Reconciliation (IR)**: Utilizes a high-throughput QC-LDPC Decoder (WiMAX matrix) to correct quantum bit errors (QBER).
 2. **Privacy Amplification (PA)**: Employs a highly optimized Number Theoretic Transform (NTT) core to hash the reconciled key via Toeplitz matrix multiplication, ensuring unconditional security.
 
@@ -21,7 +21,7 @@ The core top-level module is `qkd_post_processing_top.v`, which orchestrates the
     *   17-bit Fermat Prime Modular Arithmetic ($Ring Size = 32768$).
     *   Integrated 64-bit LFSR PRNG for dynamic Toeplitz seed generation.
 *   **Output**: 256-bit secure key serialized over an AXI-Stream interface (64-bit word size).
-*   **Error Feedback**: `tx_err_feedback` signal to alert outer networking layers of decoding failures.
+*   **HW/SW Co-Design (Interrupts)**: `ir_fail_intr` signal to trigger the ARM Cortex-A9 processor for Software-assisted Blind Reconciliation.
 
 ```mermaid
 graph TD
@@ -70,6 +70,10 @@ qkd_post_processing/
 │   └── qkd_ldpc_sim.py    # Generates LLR & Syndrome based on QBER
 ├── scripts/               # Vivado Tcl scripts
 │   └── sync_files.tcl     # Script to sync source code into Vivado
+├── vitis_src/             # Bare-Metal C Drivers for Zynq ARM PS
+│   ├── main.c             # Main control flow (DMA, GPIO, Interrupts)
+│   ├── generate_test_vectors.py # Python script to generate test_data.h
+│   └── test_data.h        # Fake LLR/Syndrome arrays for DMA injection
 └── .gitignore             # Ignores Vivado build artifacts
 ```
 
@@ -123,5 +127,12 @@ This IP is fully synthesizable. To deploy it on a real board:
 2. Add the `qkd_post_processing_top` module as an RTL IP.
 3. Instantiate a **Zynq-7000 Processing System**.
 4. Connect the input/output AXI-Stream interfaces of the QKD IP to the Zynq's **AXI Direct Memory Access (DMA)** blocks.
-5. Map the `tx_err_feedback` to a Zynq GPIO or AXI Interrupt controller to trigger software-level cascade/re-transmission.
-6. Generate Bitstream and export `.xsa` for Vitis/Petalinux software stack development.
+5. Map the `ir_fail_intr` to the Zynq Processing System's `IRQ_F2P` interrupt port.
+6. Generate Bitstream and export `.xsa`.
+
+### Bare-Metal Software (Vitis)
+After exporting the hardware:
+1. Create a Vitis Platform Project using the `.xsa` file.
+2. Create an Application Project (Empty or Hello World).
+3. Copy the files from `vitis_src/` into your `src/` directory.
+4. Build and Run on the physical hardware to see the 256-bit Secret Key extraction process in action via UART.

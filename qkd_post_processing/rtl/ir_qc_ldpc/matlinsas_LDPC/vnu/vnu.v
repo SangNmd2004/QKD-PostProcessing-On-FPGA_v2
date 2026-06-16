@@ -6,6 +6,37 @@ parameter data_w = 8;
 parameter D=12;
 parameter ext_w = 3;
 localparam sum_w = data_w + ext_w;
+// Chuyển các hàm (functions) lên đầu file để Vivado có thể tổng hợp được vào tham số (Resolve to constant)
+function integer next_n;
+    input integer n;
+    integer t;
+    begin
+        t = n % 3;
+        next_n = t + ((n - t) << 1) / 3;
+    end
+endfunction
+
+function integer tree_h;
+    input integer n;
+    begin
+        tree_h = 0;
+        while(n > 2) begin
+            n = next_n(n);
+            tree_h = tree_h + 1;
+        end
+    end
+endfunction
+
+function integer tree_w;
+    input integer n, l;
+    begin
+        tree_w = n;
+        for(l = l; l > 0; l = l - 1) begin
+            tree_w = next_n(tree_w);
+        end
+    end
+endfunction
+
 localparam TH = tree_h(D+1);
 
 input 	[data_w-1:0] l;
@@ -53,36 +84,4 @@ assign dec = s[sum_w-1];
 //--------test---------
 //assign test = s;
 //--------------------
-
-function integer next_n;
-    input integer n;
-	 integer t;
-    begin
-	     t = n%3;
-        next_n = t + ((n-t) << 1)/3;
-    end
-endfunction
-
-function integer tree_w;
-    input integer n, l;
-    begin
-        tree_w = n;
-        for(l=l; l>0; l=l-1) begin
-            tree_w = next_n(tree_w);
-        end
-    end
-endfunction
-
-function integer tree_h;
-    input integer n;
-    begin
-        tree_h = 0;
-        while(n>2) begin
-            n = next_n(n);
-            tree_h = tree_h + 1;
-        end
-    end
-endfunction
-	
 endmodule
-

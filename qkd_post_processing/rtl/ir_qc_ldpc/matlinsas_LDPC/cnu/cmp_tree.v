@@ -9,6 +9,36 @@ parameter data_w = 8;
 parameter idx_w = 8;
 parameter D = 5;
 localparam DD = (D & 1)?(D + 1):D;
+
+// Chuyển các function lên trước Generate Block để Vivado tổng hợp được (Resolve to constant)
+function integer next_n;
+    input integer n;
+    begin
+        next_n = (n >> 1) + (n & 1);
+    end
+endfunction
+
+function integer tree_h;
+    input integer n;
+    begin
+        tree_h = 0;
+        while(n>1) begin
+            n = next_n(n);
+            tree_h = tree_h + 1;
+        end
+    end
+endfunction
+
+function integer tree_w;
+    input integer n, l;
+    begin
+        tree_w = n;
+        for(l=l; l>0; l=l-1) begin
+            tree_w = next_n(tree_w);
+        end
+    end
+endfunction
+
 localparam TH = tree_h(DD>>1);
 
 input clk, rst, en;
@@ -67,34 +97,4 @@ always @(posedge clk) begin
         min2 <= pairs[TH][data_w*2-1:data_w];
     end
 end
-//------------
-function integer next_n;
-    input integer n;
-    begin
-        next_n = (n >> 1) + (n & 1);
-    end
-endfunction
-
-function integer tree_w;
-    input integer n, l;
-    begin
-        tree_w = n;
-        for(l=l; l>0; l=l-1) begin
-            tree_w = next_n(tree_w);
-        end
-    end
-endfunction
-
-function integer tree_h;
-    input integer n;
-    begin
-        tree_h = 0;
-        while(n>1) begin
-            n = next_n(n);
-            tree_h = tree_h + 1;
-        end
-    end
-endfunction
-	
 endmodule
-
