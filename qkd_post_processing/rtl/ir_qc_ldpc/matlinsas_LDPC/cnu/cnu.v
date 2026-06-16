@@ -51,16 +51,15 @@ sgn_ram #(.D(D)) SRAM(
 );
 
 assign tmin = active ? {2'b0, min} : 0;
+// tmin2 and min2 are unused in Uniform Min-Sum, they will be optimized away by Vivado
 assign tmin2 = active ? {2'b0, min2} : 0;
 
 wire signed [data_w+1:0] tmin_scaled = ( $signed((tmin<<<1)+tmin)>>>2 );
-wire signed [data_w+1:0] tmin2_scaled = ( $signed((tmin2<<<1)+tmin2)>>>2 );
 
 generate
 for(i=0; i<D; i=i+1) begin :calc_r
-    assign r[i*res_w +:res_w] = (min_idx == i)?
-            ( (rsgn^qsgn2[i])? -$signed(tmin2_scaled) : tmin2_scaled ):
-            ( (rsgn^qsgn2[i])? -$signed(tmin_scaled) : tmin_scaled );
+    // Uniform Min-Sum Approximation: Only use min1 (tmin_scaled) for all edges
+    assign r[i*res_w +:res_w] = ( (rsgn^qsgn2[i])? -$signed(tmin_scaled) : tmin_scaled );
 end
 endgenerate
 
