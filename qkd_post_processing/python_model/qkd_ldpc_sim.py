@@ -25,20 +25,32 @@ def quantize_llr(llr, w=5, frac=2):
     return np.where(val < 0, val + (1 << w), val)
 
 def load_parity_check_matrix():
-    # Đọc file config để lấy ma trận H
-    config_path = os.path.join(SCRIPT_DIR, '../rtl/ir_qc_ldpc/matlinsas_LDPC/core_gen/config')
+    # Sử dụng Base Matrix của IEEE 802.16e (WiMAX) Rate 1/2 (giống với rom_h_matrix.v trên FPGA)
+    base_matrix = [
+        [-1, 94, 73, -1, -1, -1, -1, -1, 55, 83, -1, -1,  7,  0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, 27, -1, -1, -1, 22, 79,  9, -1, -1, -1, 12, -1,  0,  0, -1, -1, -1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1, 24, 22, 81, -1, 33, -1, -1, -1,  0, -1, -1,  0,  0, -1, -1, -1, -1, -1, -1, -1, -1],
+        [61, -1, 47, -1, -1, -1, -1, -1, 65, 25, -1, -1, -1, -1, -1,  0,  0, -1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, 39, -1, -1, -1, 84, -1, -1, 41, 72, -1, -1, -1, -1, -1,  0,  0, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1, -1, 46, 40, -1, 82, -1, -1, -1, 79,  0, -1, -1, -1, -1,  0,  0, -1, -1, -1, -1, -1],
+        [-1, -1, 95, 53, -1, -1, -1, -1, -1, 14, 18, -1, -1, -1, -1, -1, -1, -1,  0,  0, -1, -1, -1, -1],
+        [-1,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0,  0, -1, -1, -1],
+        [80, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0,  0, -1, -1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0,  0, -1],
+        [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0,  0],
+        [92, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  0]
+    ]
+    
     H = np.zeros((N - K, N), dtype=int)
-    try:
-        with open(config_path, 'r') as f:
-            lines = f.readlines()
-        for i in range(N - K):
-            cols = lines[i+2].split()
-            for c in cols:
-                c = int(c)
-                if c != -1:
-                    H[i, c] = 1
-    except FileNotFoundError:
-        print("Warning: config file not found, assuming all-zero syndrome!")
+    for r in range(C):
+        for c in range(R):
+            shift = base_matrix[r][c]
+            if shift != -1:
+                # Tạo identity matrix kích thước ZxZ và dịch vòng
+                I = np.eye(Z, dtype=int)
+                I_shifted = np.roll(I, shift, axis=1)
+                H[r*Z:(r+1)*Z, c*Z:(c+1)*Z] = I_shifted
+                
     return H
 
 def generate_test_vector(qber=0.05, code_rate='1/2'):

@@ -110,6 +110,8 @@ module qkd_post_processing_top #(
         .clk(clk),
         .rst(rst),
         .start(ldpc_en),
+        .llr_in_array(ldpc_l_buffer), // Bắt buộc phải có LLR_IN
+        .syn_in(syndrome_buffer),
         .done(ldpc_done),
         .ir_success(ir_success),
         .ir_fail_intr(ir_fail_intr),
@@ -128,12 +130,12 @@ module qkd_post_processing_top #(
 
     parallel_to_axis #(
         .DATA_W(64),
-        .BLOCK_BITS(LDPC_BLOCK)
+        .BLOCK_BITS(4096) // Zero-pad from 2304 to 4096 to satisfy NTT Core's power-of-2 requirement
     ) u_parallel_to_axis_ir (
         .clk(clk),
         .rst(rst),
         .p_data_in(ldpc_res),
-        .p_valid_in(ir_success), // Khi giải mã thành công thì đẩy xuống FIFO
+        .p_valid_in(ldpc_done), // Bắt buộc phải dùng ldpc_done vì lúc này ldpc_res mới chứa codeword hợp lệ
         .p_ready_out(),
         
         .m_axis_tdata(axis_ir_to_pa_tdata),
@@ -190,16 +192,16 @@ module qkd_post_processing_top #(
     );
 
     // ==========================================
-    // 8. MODULE: Hash Output Serializer (AXI-Stream)
+    // 8. MODULE: Hash Output Serializer (AXI-Stream) - BYPASSED FOR DEBUGGING
     // ==========================================
     parallel_to_axis #(
         .DATA_W(PA_DATA_W), // 64-bit output stream
-        .BLOCK_BITS(256)
+        .BLOCK_BITS(2304)   // Thay đổi từ 256 thành 2304 bits (288 Bytes) để xuất trọn vẹn Codeword
     ) u_parallel_to_axis_hash (
         .clk(clk),
         .rst(rst),
-        .p_data_in(hash_parallel_out),
-        .p_valid_in(hash_parallel_valid),
+        .p_data_in(ldpc_res),   // Bypass PA: Trỏ thẳng vào kết quả của LDPC
+        .p_valid_in(ldpc_done), // Bypass PA: Kích hoạt ngay khi LDPC xong
         .p_ready_out(),
         
         .m_axis_tdata(m_axis_key_tdata),

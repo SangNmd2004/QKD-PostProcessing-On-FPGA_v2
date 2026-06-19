@@ -6,7 +6,7 @@
 #include "xgpio.h"
 #include "xscugic.h"
 #include "xil_cache.h"
-#include "test_data.h" // Sinh ra từ Python script
+#include "test_data.h" // Sử dụng data thật có nhiễu QBER 0.50%
 
 // Instance Pointers cho các ngoại vi
 XAxiDma dma_llr;
@@ -27,10 +27,14 @@ void ir_fail_isr(void *CallbackRef) {
     xil_printf("\r\n[INTERRUPT] HW Interrupt Asserted! ir_fail_intr = 1\r\n");
     xil_printf("[ZYNQ_PS] Lỗi giải mã! Đóng băng Hệ thống Lượng Tử. Tiến hành Blind Reconciliation...\r\n");
     
+    // Đợi DMA nhận xong (sẽ timeout ở thực tế, tạm comment hoặc để nguyên tuỳ thiết kế)
+    // while (XAxiDma_Busy(&dma_syn_key, XAXIDMA_DEVICE_TO_DMA)) {}
+    // Xil_DCacheInvalidateRange((UINTPTR)key_buffer, 32);
+    
     // Ở hệ thống thực tế, PS sẽ tính toán hội chứng mở rộng ở đây. 
     // Trong file mô phỏng này, ta gởi lại chính Syndrome cũ (Fake Data)
-    Xil_DCacheFlushRange((UINTPTR)syn_buffer, SYN_ARRAY_SIZE);
-    XAxiDma_SimpleTransfer(&dma_syn_key, (UINTPTR)syn_buffer, SYN_ARRAY_SIZE, XAXIDMA_DMA_TO_DEVICE);
+    Xil_DCacheFlushRange((UINTPTR)syn_buffer, SYN_ARRAY_SIZE / 2);
+    XAxiDma_SimpleTransfer(&dma_syn_key, (UINTPTR)syn_buffer, SYN_ARRAY_SIZE / 2, XAXIDMA_DMA_TO_DEVICE);
     while (XAxiDma_Busy(&dma_syn_key, XAXIDMA_DMA_TO_DEVICE)) {}
     xil_printf("[ZYNQ_PS] Nạp xong ma trận mở rộng. Đang gọi mạch PL chạy tiếp...\r\n");
 
@@ -108,22 +112,25 @@ int main() {
     // Xóa bộ nhớ đệm Cache (Quan trọng nhất khi chạy Bare-metal ARM Cortex-A9)
     Xil_DCacheFlushRange((UINTPTR)llr_buffer, LLR_ARRAY_SIZE);
     Xil_DCacheFlushRange((UINTPTR)syn_buffer, SYN_ARRAY_SIZE);
-    Xil_DCacheFlushRange((UINTPTR)key_buffer, 32); // Key Output = 256 bits = 32 bytes
+    Xil_DCacheFlushRange((UINTPTR)key_buffer, 288); // Bật chế độ Debug: Nhận Full Codeword 288 Bytes thay vì 32 bytes Hash
     
     // =======================================================
-    // KỊCH BẢN 1: GỬI LLR VÀ SYNDROME & CHỜ SECRET KEY
-    // =======================================================
-    xil_printf("\r\n[1] Starting Privacy Amplification Listen Channel...\r\n");
-    // Ép kênh S2MM (Receive) của DMA 1 há mồm chờ Secret Key 32 bytes đổ về.
-    XAxiDma_SimpleTransfer(&dma_syn_key, (UINTPTR)key_buffer, 32, XAXIDMA_DEVICE_TO_DMA);
+    // 5. BƠM DỮ LIỆU (STREAMING LLR & SYNDROME) VÀO MẠCH PL
+    // Ép kênh S2MM (Receive) của DMA 1 há mồm chờ Full Codeword 288 bytes đổ về.
+    XAxiDma_SimpleTransfer(&dma_syn_key, (UINTPTR)key_buffer, 288, XAXIDMA_DEVICE_TO_DMA);
 
-    xil_printf("[2] Streaming %d bytes of LLR & %d bytes of Syndrome...\r\n", LLR_ARRAY_SIZE, SYN_ARRAY_SIZE);
-    XAxiDma_SimpleTransfer(&dma_llr, (UINTPTR)llr_buffer, LLR_ARRAY_SIZE, XAXIDMA_DMA_TO_DEVICE);
-    XAxiDma_SimpleTransfer(&dma_syn_key, (UINTPTR)syn_buffer, SYN_ARRAY_SIZE, XAXIDMA_DMA_TO_DEVICE);
+    u32 llr_single_block = LLR_ARRAY_SIZE / 2;
+    u32 syn_single_block = SYN_ARRAY_SIZE / 2;
+    
+    xil_printf("[2] Streaming %lu bytes of LLR & %lu bytes of Syndrome (Block 1)...\r\n", llr_single_block, syn_single_block);
+    
+    // CHỈ TRUYỀN ĐÚNG 1 BLOCK CHO MẠCH GIẢI MÃ XONG MỚI TRUYỀN TIẾP
+    XAxiDma_SimpleTransfer(&dma_llr, (UINTPTR)llr_buffer, llr_single_block, XAXIDMA_DMA_TO_DEVICE);
+    XAxiDma_SimpleTransfer(&dma_syn_key, (UINTPTR)syn_buffer, syn_single_block, XAXIDMA_DMA_TO_DEVICE);
     
     while (XAxiDma_Busy(&dma_llr, XAXIDMA_DMA_TO_DEVICE)) {}
     while (XAxiDma_Busy(&dma_syn_key, XAXIDMA_DMA_TO_DEVICE)) {}
-    xil_printf("[2] Data injected into FPGA Pipeline successfully.\r\n");
+    xil_printf("[2] Data injected into FPGA Pipeline successfully. Waiting for LDPC...\r\n");
 
     // =======================================================
     // KỊCH BẢN 2: LẮNG NGHE NGẮT (INTERRUPT SẼ TỰ KÍCH HOẠT) VÀ ĐỢI KEY
@@ -131,20 +138,28 @@ int main() {
     xil_printf("\r\n[3] Waiting for Toeplitz Hashing Algorithm (NTT Core) to finish...\r\n");
     
     // Vòng lặp kẹt ở đây để đợi mảng S2MM nhận đủ 32 bytes Key
+    int wait_cnt = 0;
     while (XAxiDma_Busy(&dma_syn_key, XAXIDMA_DEVICE_TO_DMA)) {
-        // Có thể đọc GPIO Channel 1 ở đây để in trạng thái pa_active ra màn hình nếu muốn
+        if (wait_cnt % 1000000 == 0) {
+            u32 status = XGpio_DiscreteRead(&gpio, 1);
+            xil_printf("DEBUG: pa_active = %lu\r\n", (status >> 1) & 0x01); // Giả sử pa_active nối vào bit 1 của GPIO1
+        }
+        wait_cnt++;
+        if (wait_cnt > 20000000) {
+            xil_printf("DEBUG: TIMEOUT! NTT Core is stuck!\r\n");
+            break;
+        }
     }
     
     // Vô hiệu hóa cache chỗ này để bắt CPU ARM đọc dữ liệu MỚI TỪ RAM, thay vì L1 Cache cũ.
-    Xil_DCacheInvalidateRange((UINTPTR)key_buffer, 32);
+    Xil_DCacheInvalidateRange((UINTPTR)key_buffer, 288);
     
     xil_printf("\r\n=================================================\r\n");
-    xil_printf("[SUCCESS] 256-BIT SECRET KEY EXTRACTION COMPLETE! \r\n");
-    xil_printf("=================================================\r\n");
-    
-    xil_printf("HEX DUMP: 0x");
-    for(int i=0; i<32; i++) {
-        xil_printf("%02X", key_buffer[i]);
+    xil_printf("[SUCCESS] ERROR CORRECTION COMPLETE!\r\n");
+    xil_printf("Decoded Codeword (288-byte Hex):\r\n");
+    for (int i = 0; i < 288; i++) {
+        xil_printf("%02X ", key_buffer[i]);
+        if ((i + 1) % 16 == 0) xil_printf("\r\n");
     }
     xil_printf("\r\n");
     

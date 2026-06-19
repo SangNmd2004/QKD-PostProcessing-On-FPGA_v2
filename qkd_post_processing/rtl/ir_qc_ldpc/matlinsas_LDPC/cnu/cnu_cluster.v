@@ -13,10 +13,28 @@ module cnu_cluster #(
     input  active,
     input  [Zc-1:0] syn_in,
     input  [Zc*(res_w+ext_w)*D-1:0] q_in,    // VNU to CNU messages
-    output [Zc*res_w*D-1:0] r_out            // CNU to VNU messages
+    output [Zc*res_w*D-1:0] r_out,           // CNU to VNU messages
+    output [Zc-1:0] parity_vector
 );
 
-    genvar i;
+    wire [Zc*D*(res_w+ext_w)-1:0] q_in_reordered;
+    wire [Zc*D*res_w-1:0] r_out_reordered;
+    
+    genvar i, j;
+    generate
+        for(i = 0; i < Zc; i = i + 1) begin : reorder_Zc
+            for(j = 0; j < D; j = j + 1) begin : reorder_D
+                // Map [D][Zc] from core to [Zc][D] for CNU instances
+                assign q_in_reordered[ (i*D + j)*(res_w+ext_w) +: (res_w+ext_w) ] = 
+                       q_in[ (j*Zc + i)*(res_w+ext_w) +: (res_w+ext_w) ];
+                       
+                // Map [Zc][D] from CNU instances to [D][Zc] for core
+                assign r_out[ (j*Zc + i)*res_w +: res_w ] = 
+                       r_out_reordered[ (i*D + j)*res_w +: res_w ];
+            end
+        end
+    endgenerate
+
     generate
         for(i = 0; i < Zc; i = i + 1) begin : cnu_inst
             cnu #(
@@ -29,9 +47,10 @@ module cnu_cluster #(
                 .active(active),
                 .clk(clk),
                 .rst(rst),
-                .q(q_in[i*(res_w+ext_w)*D +: (res_w+ext_w)*D]),
+                .q(q_in_reordered[i*D*(res_w+ext_w) +: (res_w+ext_w)*D]),
                 .syn(syn_in[i]),
-                .r(r_out[i*res_w*D +: res_w*D])
+                .r(r_out_reordered[i*res_w*D +: res_w*D]),
+                .rsgn_out(parity_vector[i])
             );
         end
     endgenerate

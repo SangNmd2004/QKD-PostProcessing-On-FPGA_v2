@@ -21,6 +21,10 @@ module pa_toeplitz_hash #(
     output reg pa_active
 );
 
+    // Pipeline shift registers for ModMult latency (8 cycles)
+    reg [11:0] bit_rev_addr_delay [0:7];
+    reg [7:0] mult_valid_delay;
+
     // FSM States
     localparam ST_INIT_W = 0;
     localparam ST_IDLE = 1;
@@ -69,7 +73,7 @@ module pa_toeplitz_hash #(
     
     // PRNG for Toeplitz Seed
     wire [16:0] prng_out;
-    wire prng_en = (state == ST_MULT_DESCRAMBLE);
+    wire prng_en = (state == ST_MULT_DESCRAMBLE) || (state == ST_RUN_NTT && ntt_done);
     
     prng_lfsr #(
         .SEED(64'hA1B2_C3D4_E5F6_7890)
@@ -99,6 +103,7 @@ module pa_toeplitz_hash #(
     always @(posedge clk) begin
         if (rst) begin
             state <= ST_INIT_W;
+            pa_hash_out <= 0;
             pa_hash_valid <= 0;
             pa_active <= 0;
             ntt_load_w <= 0;
@@ -109,6 +114,7 @@ module pa_toeplitz_hash #(
             mem_en <= 0;
             mem_addr <= 0;
             bit_cnt <= 0;
+            mult_valid_delay <= 0;
         end else begin
             ntt_load_w <= 0;
             ntt_load_data <= 0;
@@ -143,6 +149,7 @@ module pa_toeplitz_hash #(
                         mem_addr <= 0;
                         mem_en <= 1;
                         bit_cnt <= 0;
+                        pa_hash_out <= 0;
                     end
                 end
                 
@@ -172,22 +179,45 @@ module pa_toeplitz_hash #(
                 ST_RUN_NTT: begin
                     if (ntt_done) begin
                         state <= ST_MULT_DESCRAMBLE;
-                        cnt <= 0;
+                        cnt <= 1;
+                        
+                        // Capture cycle 0 immediately
+                        mult_a <= ntt_dout;
+                        mult_b <= prng_out;
+                        mult_valid_delay <= {mult_valid_delay[6:0], 1'b1};
+                        bit_rev_addr_delay[0] <= 12'd0;
                     end
                 end
                 
                 ST_MULT_DESCRAMBLE: begin
                     // Read ntt_dout, multiply with PRNG Toeplitz ROM, write bit-reversed
-                    mult_a <= ntt_dout;
-                    mult_b <= prng_out; // LFSR-generated seed
+                    if (cnt < NTT_N) begin
+                        mult_a <= ntt_dout;
+                        mult_b <= prng_out; // LFSR-generated seed
+                        mult_valid_delay <= {mult_valid_delay[6:0], 1'b1};
+                        bit_rev_addr_delay[0] <= bit_rev_addr;
+                    end else begin
+                        mult_valid_delay <= {mult_valid_delay[6:0], 1'b0};
+                        bit_rev_addr_delay[0] <= 12'd0;
+                    end
                     
-                    // The mult_out is available after ModMult delay. 
-                    // For simplicity in this mock integration, assume 1-cycle or just store ntt_dout
-                    descramble_ram[bit_rev_addr] <= mult_out; 
+                    // Shift pipeline for 8 cycles ModMult latency
+                    bit_rev_addr_delay[1] <= bit_rev_addr_delay[0];
+                    bit_rev_addr_delay[2] <= bit_rev_addr_delay[1];
+                    bit_rev_addr_delay[3] <= bit_rev_addr_delay[2];
+                    bit_rev_addr_delay[4] <= bit_rev_addr_delay[3];
+                    bit_rev_addr_delay[5] <= bit_rev_addr_delay[4];
+                    bit_rev_addr_delay[6] <= bit_rev_addr_delay[5];
+                    bit_rev_addr_delay[7] <= bit_rev_addr_delay[6];
                     
-                    if (cnt == NTT_N - 1) begin
+                    if (mult_valid_delay[7]) begin
+                        descramble_ram[bit_rev_addr_delay[7]] <= mult_out; 
+                    end
+                    
+                    if (cnt == NTT_N + 8 - 1) begin
                         state <= ST_LOAD_Y;
                         cnt <= 0;
+                        mult_valid_delay <= 0;
                     end else begin
                         cnt <= cnt + 1;
                     end
@@ -211,17 +241,21 @@ module pa_toeplitz_hash #(
                 ST_RUN_INTT: begin
                     if (ntt_done) begin
                         state <= ST_ACCUMULATE;
-                        cnt <= 0;
+                        cnt <= 1;
+                        pa_hash_out <= {pa_hash_out[HASH_LEN-2:0], pa_hash_out[HASH_LEN-1]} ^ ntt_dout;
                     end
                 end
                 
                 ST_ACCUMULATE: begin
-                    // Accumulate ntt_dout for final hash (Circular shift and XOR)
-                    pa_hash_out <= {pa_hash_out[HASH_LEN-2:0], pa_hash_out[HASH_LEN-1]} ^ ntt_dout;
+                    if (cnt < NTT_N) begin
+                        // Accumulate ntt_dout for final hash (Circular shift and XOR)
+                        pa_hash_out <= {pa_hash_out[HASH_LEN-2:0], pa_hash_out[HASH_LEN-1]} ^ ntt_dout;
+                    end
                     if (cnt == NTT_N - 1) begin
                         state <= ST_DONE;
+                    end else begin
+                        cnt <= cnt + 1;
                     end
-                    cnt <= cnt + 1;
                 end
                 
                 ST_DONE: begin

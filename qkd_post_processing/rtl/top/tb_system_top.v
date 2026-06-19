@@ -106,9 +106,9 @@ module tb_system_top();
             $display("[%0t] [DEBUG] ldpc_en changed: %b -> %b", $time, last_ldpc_en, dut.ldpc_en);
             last_ldpc_en = dut.ldpc_en;
         end
-        if (dut.ir_qc_ldpc.state != last_state) begin
-            $display("[%0t] [DEBUG] FSM state changed: %d -> %d", $time, last_state, dut.ir_qc_ldpc.state);
-            last_state = dut.ir_qc_ldpc.state;
+        if (dut.u_ldpc_core.state != last_state) begin
+            $display("[%0t] [DEBUG] FSM state changed: %d -> %d", $time, last_state, dut.u_ldpc_core.state);
+            last_state = dut.u_ldpc_core.state;
         end
         
         // Print when ldpc_start or syn_start become 1
@@ -188,10 +188,10 @@ module tb_system_top();
             integer k;
             for(k=0; k<2; k=k+1) begin
                 @(posedge clk);
-                #1 force dut.ir_qc_ldpc.ir_success = 1;
+                #1 force dut.u_ldpc_core.ir_success = 1;
                 
                 @(posedge clk);
-                #1 release dut.ir_qc_ldpc.ir_success;
+                #1 release dut.u_ldpc_core.ir_success;
                 
                 // Đợi mạch truyền xong 36 chunks (36 * 10ns = 360ns)
                 // Dùng Fixed Delay thay vì wait(p_ready_out) để tránh việc Vivado Optimizer xóa mất port không dùng
