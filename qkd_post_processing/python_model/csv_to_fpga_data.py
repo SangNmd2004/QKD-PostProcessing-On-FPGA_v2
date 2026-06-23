@@ -58,19 +58,14 @@ def generate_from_csv():
                     llr[i] = -llr_mag
                     
             llr_q = quantize_llr(llr, w=6, frac=2)
-            Z = 96
-            # Pack 6-bit LLRs into binary string (576 bits per line)
-            for i in range(0, N, Z):
-                chunk = llr_q[i:i+Z]
-                bin_str = ""
-                # LSB is rightmost in string for $readmemb
-                for j in reversed(range(Z)):
-                    bin_str += format(chunk[j] & 0x3F, '06b')
+            # Pack 6-bit LLRs into binary string (1 LLR per line, 2304 lines total)
+            for val in llr_q:
+                # Convert signed 6-bit to binary string
+                bin_str = format(val & 0x3F, '06b')
                 f_llr.write(f"{bin_str}\n")
                 
                 # Pack bytes for C header
-                for j in range(Z):
-                    llr_bytes.append(chunk[j] & 0xFF)
+                llr_bytes.append(val & 0xFF)
                 
             # TÍNH Syndrome cho Alice
             syn = np.dot(H, alice_blk) % 2
