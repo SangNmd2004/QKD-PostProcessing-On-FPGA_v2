@@ -2,8 +2,8 @@ import os
 
 # Define paths
 DATA_DIR = os.path.join(os.path.dirname(__file__), '../data')
-EXPECTED_FILE = os.path.join(DATA_DIR, 'expected_out.txt')
-DECODED_FILE = os.path.join(DATA_DIR, 'decoded_out.txt')
+EXPECTED_FILE = os.path.join(DATA_DIR, 'hw_expected.txt')
+DECODED_FILE = os.path.join(DATA_DIR, 'hw_output.txt')
 
 def compare_all():
     if not os.path.exists(EXPECTED_FILE):

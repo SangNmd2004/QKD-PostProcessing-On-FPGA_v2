@@ -29,7 +29,8 @@ module tb_system_top;
     wire tx_err_feedback;
     wire ir_fail_intr;
     
-    reg [1:0] code_rate = 2'b00; // Test Rate 1/2
+    reg [1:0] code_rate = 2'b10; // Test Rate 3/4 ban đầu
+    reg resume_decoding = 1'b0;
     
     qkd_post_processing_top #(
         .LLR_W(LLR_W),
@@ -53,7 +54,7 @@ module tb_system_top;
         .ir_success(ir_success),
         .pa_active(pa_active),
         .ir_fail_intr(ir_fail_intr),
-        .resume_decoding(1'b0),
+        .resume_decoding(resume_decoding),
         .puncture_en(1'b0),
         .ldpc_iters_out()
     );
@@ -110,26 +111,73 @@ module tb_system_top;
                     wait(s_axis_syn_tready);
                     @(posedge clk);
                     #1;
-                    // Pack 8 syndrome bits into 1 byte
-                    s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
-                                        syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
+                    if (k < 576) begin
+                        s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
+                                            syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
+                    end else begin
+                        s_axis_syn_tdata = 8'd0; // Zero padding
+                    end
                     s_axis_syn_tvalid = 1;
                 end
                 @(posedge clk);
                 #1;
                 s_axis_syn_tvalid = 0;
-                $display("Loaded 144 bytes of Syndrome.");
+                $display("Loaded 72 bytes of Syndrome (Rate 3/4).");
             end
         join
         
-        $display("Waiting for IR (LDPC) Module to complete Syndrome-based decoding...");
-        // Wait for IR to complete
+        $display("Waiting for IR (LDPC) Module to complete Syndrome-based decoding (Rate 3/4)...");
         wait(ir_success || ir_fail_intr);
         
         if (ir_fail_intr) begin
-            $display(">>> [FAILED] Error Reconciliation (IR) Phase Failed! (Max iterations reached or Syndrome mismatch)");
+            $display(">>> [FAILED] Rate 3/4 Failed! Tiến hành Blind Reconciliation (Hạ xuống Rate 2/3)...");
+            @(posedge clk); #1;
+            for (k = 0; k < 1152; k = k + 8) begin
+                wait(s_axis_syn_tready);
+                @(posedge clk); #1;
+                if (k < 768) begin
+                    s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
+                                        syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
+                end else begin
+                    s_axis_syn_tdata = 8'd0;
+                end
+                s_axis_syn_tvalid = 1;
+            end
+            @(posedge clk); #1;
+            s_axis_syn_tvalid = 0;
+            $display("Loaded 96 bytes of Syndrome (Rate 2/3).");
+            
+            resume_decoding = 1;
+            @(posedge clk); #1;
+            resume_decoding = 0;
+            
+            wait(ir_success || ir_fail_intr);
+            if (ir_fail_intr) begin
+                $display(">>> [FAILED] Rate 2/3 Failed! Tiến hành Blind Reconciliation (Hạ xuống Rate 1/2)...");
+                @(posedge clk); #1;
+                for (k = 0; k < 1152; k = k + 8) begin
+                    wait(s_axis_syn_tready);
+                    @(posedge clk); #1;
+                    s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
+                                        syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
+                    s_axis_syn_tvalid = 1;
+                end
+                @(posedge clk); #1;
+                s_axis_syn_tvalid = 0;
+                $display("Loaded 144 bytes of Syndrome (Rate 1/2).");
+                
+                resume_decoding = 1;
+                @(posedge clk); #1;
+                resume_decoding = 0;
+                
+                wait(ir_success || ir_fail_intr);
+            end
+        end
+        
+        if (ir_fail_intr) begin
+            $display(">>> [FAILED] Error Reconciliation Phase Failed completely!");
         end else begin
-            $display(">>> [SUCCESS] Error Reconciliation (IR) Phase Completed! Extracting Key...");
+            $display(">>> [SUCCESS] Error Reconciliation Phase Completed!");
         end
         
         // WAIT cho module LDPC xuất xong toàn bộ khóa ra thanh ghi (mất 25 xung nhịp sau khi check)
@@ -138,12 +186,22 @@ module tb_system_top;
         
         // Verify LDPC output data
         #10;
-        begin
-              err_count = 0;
-              for(j = 0; j < LDPC_BLOCK; j = j + 1) begin
-                  if (dut.ldpc_res[j] !== expected_mem[j]) err_count = err_count + 1;
-                  if (j < 10) $display("ldpc_res[%0d]=%b, expected=%b", j, dut.ldpc_res[j], expected_mem[j]);
-              end
+        begin : VERIFY_BLOCK
+            integer f_out, f_exp;
+            f_out = $fopen("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/hw_output.txt", "w");
+            f_exp = $fopen("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/hw_expected.txt", "w");
+
+            err_count = 0;
+            for(j = 0; j < LDPC_BLOCK; j = j + 1) begin
+                $fdisplay(f_out, "%b", dut.ldpc_res[j]);
+                $fdisplay(f_exp, "%b", expected_mem[j]);
+                if (dut.ldpc_res[j] !== expected_mem[j]) err_count = err_count + 1;
+                if (j < 10) $display("ldpc_res[%0d]=%b, expected=%b", j, dut.ldpc_res[j], expected_mem[j]);
+            end
+            
+            $fclose(f_out);
+            $fclose(f_exp);
+            $display(">>> Wrote hardware output and expected output to data/hw_output.txt and data/hw_expected.txt");
               $display("-------------------------------------------------");
             $display("DATA TEST RESULTS AFTER IR (LDPC) - SYNDROME DECODING:");
             $display("Total Key Bits (Reconciled Key): %0d bits", LDPC_BLOCK);

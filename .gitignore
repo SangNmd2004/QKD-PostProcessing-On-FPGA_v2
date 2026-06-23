@@ -46,3 +46,6 @@ post_processing_research.md
 
 # Ignore imported qkd_fso-main project
 qkd_fso-main/
+
+# Backup files
+*.bak

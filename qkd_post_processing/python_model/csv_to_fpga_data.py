@@ -12,16 +12,48 @@ from qkd_ldpc_sim import load_parity_check_matrix, quantize_llr
 
 N = 2304
 K = 1152
-NUM_BLOCKS = 2 # S' lAE°á»£ng block cáº§n thiáº¿t cho Vivado simulation (testbench = 2 blocks)
+NUM_BLOCKS = 8 # S' lAE°á»£ng block cáº§n thiáº¿t cho Vivado simulation (testbench = 2 blocks)
 REQUIRED_BITS = N * NUM_BLOCKS
 
 def generate_from_csv():
-    # FOR RATE 1/2, WE USE SYNTHETIC DATA WITH 1.0% QBER TO VERIFY THE DECODER LOGIC.
-    print("Generating synthetic data for Rate 1/2 with QBER = 1.0%...")
-    N = 2304
-    alice_arr = np.random.randint(0, 2, REQUIRED_BITS)
-    error_mask = np.random.rand(REQUIRED_BITS) < 0.010 # 1.0% QBER
-    bob_arr = alice_arr ^ error_mask
+    csv_file = os.path.join(os.path.dirname(__file__), '../../bb84_key_test_Sim_20260618_002028.csv')
+    print(f"Reading CSV: {csv_file}")
+    df = pd.read_csv(csv_file)
+    
+    alice_bits = ""
+    bob_bits = ""
+    qber_sum = 0
+    qber_count = 0
+    
+    for index, row in df.iterrows():
+        if index < 20:
+            continue
+            
+        a_bits = str(row['key_alice'])
+        b_bits = str(row['key_bob'])
+        
+        alice_bits += a_bits
+        bob_bits += b_bits
+        qber_val = float(row['QBER_eff_pct']) if 'QBER_eff_pct' in row else float(row['QBER_pct'])
+        qber_sum += qber_val
+        qber_count += 1
+        
+        if len(alice_bits) >= REQUIRED_BITS:
+            break
+            
+    if len(alice_bits) < REQUIRED_BITS:
+        print(f"Error: CSV file only has {len(alice_bits)} bits, need {REQUIRED_BITS} bits.")
+        return
+        
+    alice_bits = alice_bits[:REQUIRED_BITS]
+    bob_bits = bob_bits[:REQUIRED_BITS]
+    avg_qber = (qber_sum / qber_count) / 100.0 # Convert % to decimal
+    
+    print(f"Extracted {REQUIRED_BITS} bits. Average QBER: {avg_qber*100:.2f}%")
+    
+    # Generate data
+    alice_arr = np.array([int(b) for b in alice_bits])
+    bob_arr = np.array([int(b) for b in bob_bits])
     
     actual_errors = np.sum(alice_arr != bob_arr)
     print(f"Number of ACTUAL mismatch bits in Bob's key: {actual_errors}")
@@ -35,20 +67,16 @@ def generate_from_csv():
         llr_bytes = []
         syn_bytes = []
         
-        for b in range(NUM_BLOCKS):
+        for b in [2]: # Test Block 2 từ file CSV lớn
             alice_blk = alice_arr[b*N : (b+1)*N]
+            bob_blk = bob_arr[b*N : (b+1)*N]
             
-            # Rate 3/4 LDPC threshold for short blocks with Offset Min-Sum is very weak.
-            # We synthetically generate Bob's block with 0.5% QBER to verify hardware logic.
-            error_mask = np.random.rand(N) < 0.005
-            bob_blk = alice_blk ^ error_mask.astype(int)
-            
-            print(f"Block {b}: ACTUAL mismatch bits: {np.sum(error_mask)}")
+            actual_mismatch = np.sum(alice_blk != bob_blk)
+            print(f"Block {b}: ACTUAL mismatch bits from CSV: {actual_mismatch}")
             
             # TÍNH LLR CHUẨN CHO FIXED-POINT LDPC (Tránh bão hòa sớm)
             # Thay đổi LLR mag để phù hợp với hardware Offset Min-Sum (beta=2)
-            llr_mag = 1.25
-            
+            llr_mag = 1.75
             
             llr = np.zeros(N)
             for i in range(N):

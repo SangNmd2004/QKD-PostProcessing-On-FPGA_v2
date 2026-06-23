@@ -88,6 +88,7 @@ module qkd_post_processing_top #(
         else begin
             // Chỉ bắt đầu giải mã khi CẢ LLR và Syndrome đều đã được nạp đủ
             if (ldpc_start && syn_start && !ldpc_en) ldpc_en <= 1;
+            else if (resume_decoding) ldpc_en <= 1; // Kích hoạt p_ready_in để giải phóng buffer Syndrome cũ
             else if (ir_success || ir_fail_intr) ldpc_en <= 0;
         end
     end

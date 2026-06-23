@@ -309,7 +309,9 @@ module core_partially_parallel #(
                 end 
                 WAIT_FOR_EXTENSION: begin
                     if (resume_decoding) begin
-                        ir_fail_intr <= 1'b0; current_code_rate <= current_code_rate + 1; iter_count <= 0; 
+                        ir_fail_intr <= 1'b0; 
+                        if (current_code_rate > 2'b00) current_code_rate <= current_code_rate - 1; 
+                        iter_count <= 0; 
                     end
                 end
                 OUTPUT_RES: begin
@@ -343,8 +345,11 @@ module core_partially_parallel #(
                     else next_state = LAYER_READ;
                 end
             end
-            CHECK: next_state = OUTPUT_RES; // ALWAYS force output for diagnostics!
-            WAIT_FOR_EXTENSION: if (resume_decoding) next_state = EXTENSION_LOAD;
+            CHECK: begin
+                if (all_layers_parity_ok || current_code_rate == 2'b00) next_state = OUTPUT_RES;
+                else next_state = WAIT_FOR_EXTENSION;
+            end
+            WAIT_FOR_EXTENSION: if (resume_decoding) next_state = LOAD_LLR;
             EXTENSION_LOAD: next_state = LAYER_READ;
             OUTPUT_RES: if (block_count == 25) next_state = IDLE;
         endcase

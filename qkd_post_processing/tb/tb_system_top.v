@@ -28,7 +28,7 @@ module tb_system_top;
     wire pa_active;
     wire tx_err_feedback;
     
-    reg [1:0] code_rate = 2'b00; // Test Rate 1/2
+    reg [1:0] code_rate = 2'b01; // Test Rate 2/3B
     
     qkd_post_processing_top #(
         .LLR_W(LLR_W),
@@ -130,10 +130,20 @@ module tb_system_top;
         // Verify LDPC output data
         #10;
         begin
+            integer f_out, f_exp;
+            f_out = $fopen("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/hw_output.txt", "w");
+            f_exp = $fopen("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/hw_expected.txt", "w");
+            
             err_count = 0;
             for(j = 0; j < LDPC_BLOCK; j = j + 1) begin
+                $fdisplay(f_out, "%b", dut.ldpc_res[j]);
+                $fdisplay(f_exp, "%b", expected_mem[j]);
                 if (dut.ldpc_res[j] != expected_mem[j]) err_count = err_count + 1;
             end
+            
+            $fclose(f_out);
+            $fclose(f_exp);
+            $display(">>> Wrote hardware output and expected output to data/hw_output.txt and data/hw_expected.txt");
             $display("-------------------------------------------------");
             $display("DATA TEST RESULTS AFTER IR (LDPC) - SYNDROME DECODING:");
             $display("Total Key Bits (Reconciled Key): %0d bits", LDPC_BLOCK);
