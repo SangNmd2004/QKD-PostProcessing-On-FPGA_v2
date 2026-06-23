@@ -130,8 +130,8 @@ module core_partially_parallel #(
         .clk(clk), .code_rate(current_code_rate), .row_idx(rom_row), .col_idx(rom_col), .shift_val(shift_val), .valid_conn(valid_conn)
     );
 
-    wire [shift_w-1:0] inv_shift_amt = (shift_val == 0) ? 0 : (Zc - shift_val);
-    wire [shift_w-1:0] current_shift_amt = (state == LAYER_WRITE) ? inv_shift_amt : shift_val;
+    wire [shift_w-1:0] inv_shift_amt_d2 = (shift_val_d2 == 0) ? 0 : (Zc - shift_val_d2);
+    wire [shift_w-1:0] current_shift_amt = (state == LAYER_WRITE) ? inv_shift_amt_d2 : shift_val_d2;
     
     wire [Zc*(res_w+ext_w)-1:0] v2c_array;
     wire [Zc*(res_w+ext_w)-1:0] llr_new_shifted_array;
@@ -149,7 +149,7 @@ module core_partially_parallel #(
     
     wire [Zc*res_w-1:0] c2v_new_unshifted;
     barrel_shifter #(.Zc(Zc), .word_w(res_w), .shift_w(shift_w)) u_inv_shifter (
-        .data_in(c2v_new_shifted), .shift_amt(inv_shift_amt), .data_out(c2v_new_unshifted)
+        .data_in(c2v_new_shifted), .shift_amt(inv_shift_amt_d2), .data_out(c2v_new_unshifted)
     );
     wire [Zc*res_w-1:0] c2v_new_unshifted_sat;
 
@@ -254,7 +254,7 @@ module core_partially_parallel #(
                         end
                         col_count <= col_count + 1;
                     end
-                    if (valid_read_1 && valid_conn) begin
+                    if (valid_read_2 && valid_conn_d2) begin
                         q_in_buffer[valid_degree_count] <= shift_out;
                         valid_degree_count <= valid_degree_count + 1;
                     end
@@ -280,9 +280,9 @@ module core_partially_parallel #(
                         end
                         col_count <= col_count + 1;
                     end
-                    if (valid_read_1 && valid_conn) begin
+                    if (valid_read_2 && valid_conn_d2) begin
                         llr_we <= 1'b1;
-                        llr_addr_w <= col_count_d1;
+                        llr_addr_w <= col_count_d2;
                         llr_din <= llr_din_math;
                         
                         c2v_new_buffer[write_degree_count] <= c2v_new_unshifted_sat;

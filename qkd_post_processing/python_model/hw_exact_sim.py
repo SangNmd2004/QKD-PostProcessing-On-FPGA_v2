@@ -11,7 +11,7 @@ DATA_DIR = os.path.join(SCRIPT_DIR, '../data')
 
 # --- Parameters matching RTL ---
 Zc = 96
-data_w = 10      # LLR width (increased from 6)
+data_w = 6      # LLR width
 res_w = 8        # C2V message width
 ext_w = 3        # Extension width for V2C (res_w + ext_w = 11 bits signed)
 D_cnu = 8        # Max degree of check node
