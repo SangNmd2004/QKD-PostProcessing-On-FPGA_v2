@@ -43,3 +43,6 @@ venv/
 claude_agent.py
 *.txt
 post_processing_research.md
+
+# Ignore imported qkd_fso-main project
+qkd_fso-main/

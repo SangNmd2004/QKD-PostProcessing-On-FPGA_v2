@@ -3,16 +3,17 @@
 module tb_core_partially_parallel();
 
     parameter Zc = 96;
-    parameter data_w = 5;
+    parameter data_w = 6;
     
     reg clk;
     reg rst;
     reg start;
-    reg [1151:0] syn_in;
+    reg [1535:0] syn_in;
     reg [Zc*data_w*24-1:0] llr_in_array;
     wire done;
     wire ir_success;
     wire ir_fail_intr;
+    wire [5:0] iter_out;
     reg puncture_en;
     reg resume_decoding;
     wire [Zc*24-1:0] ldpc_res_out;
@@ -30,6 +31,7 @@ module tb_core_partially_parallel();
         .done(done),
         .ir_success(ir_success),
         .ir_fail_intr(ir_fail_intr),
+        .iter_out(iter_out),
         .puncture_en(puncture_en),
         .resume_decoding(resume_decoding),
         .ldpc_res_out(ldpc_res_out)
@@ -43,10 +45,13 @@ module tb_core_partially_parallel();
 
     // File I/O
     reg [data_w-1:0] mem_llr [0:2303];
-    reg [0:0] mem_syn [0:1151];
+    reg [0:0] mem_syn [0:1535];
     integer i, f_out;
 
     initial begin
+        $display("\n==================================================");
+        $display("STARTING SIMULATION V3 (PIPELINE FIXED)...");
+        $display("==================================================\n");
         // Initialize Inputs
         rst = 1;
         start = 0;
@@ -63,8 +68,8 @@ module tb_core_partially_parallel();
         end
         
         // Read Syndrome
-        $readmemb("D:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in.txt", mem_syn, 0, 1151);
-        for(i = 0; i < 1152; i = i + 1) begin
+        $readmemb("D:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in.txt", mem_syn, 0, 1535);
+        for(i = 0; i < 1536; i = i + 1) begin
             syn_in[i] = mem_syn[i];
         end
         
@@ -72,7 +77,7 @@ module tb_core_partially_parallel();
         $display("mem_llr[0] = %b", mem_llr[0]);
         $display("mem_llr[2303] = %b", mem_llr[2303]);
         for(i=0; i<2304; i=i+1) if (mem_llr[i] === 5'bx) $display("mem_llr[%0d] IS X!", i);
-        for(i=0; i<1152; i=i+1) if (mem_syn[i] === 1'bx) $display("mem_syn[%0d] IS X!", i);
+        for(i=0; i<1536; i=i+1) if (mem_syn[i] === 1'bx) $display("mem_syn[%0d] IS X!", i);
         $display("mem_syn[0] = %b", mem_syn[0]);
         $display("mem_syn[1151] = %b", mem_syn[1151]);
         $display("----------------------\n");
@@ -90,11 +95,24 @@ module tb_core_partially_parallel();
         
         // Wait for IR interrupt or done
         wait(ir_fail_intr == 1'b1 || ir_success == 1'b1 || done == 1'b1);
-        wait(done == 1'b1);
+        if (ir_fail_intr) begin
+            $display("Pass 1 FAILED! Asserting resume_decoding for Blind Reconciliation...");
+            #50;
+            resume_decoding = 1;
+            #10;
+            resume_decoding = 0;
+            wait(done == 1'b1);
+        end else begin
+            wait(done == 1'b1);
+        end
         
         #100;
         $display("==================================================");
-        $display("Simulation Finished! Decoding %s", ir_success ? "SUCCESS" : "FAILED");
+        if (ir_success) begin
+            $display("Simulation Finished! Decoding SUCCESS in %0d iterations (Early Termination)!", iter_out);
+        end else begin
+            $display("Simulation Finished! Decoding FAILED!");
+        end
         $display("First 16 Bytes of Codeword Output:");
         $write("HEX: ");
         for(i = 0; i < 16; i = i + 1) begin
@@ -162,3 +180,4 @@ module tb_core_partially_parallel();
     end
 
 endmodule
+

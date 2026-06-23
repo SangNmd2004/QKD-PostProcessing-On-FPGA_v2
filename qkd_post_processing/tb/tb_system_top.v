@@ -2,7 +2,7 @@
 
 module tb_system_top;
 
-    parameter LLR_W = 5;
+    parameter LLR_W = 6;
     parameter LDPC_BLOCK = 2304;
     parameter PA_DATA_W = 14;
 

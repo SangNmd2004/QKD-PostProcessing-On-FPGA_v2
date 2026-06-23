@@ -2,9 +2,9 @@
 
 module core_partially_parallel #(
     parameter Zc = 96,
-    parameter data_w = 5,
+    parameter data_w = 6,
     parameter D_vnu = 6, 
-    parameter D_cnu = 8, 
+    parameter D_cnu = 15, 
     parameter ext_w = 1,
     parameter res_w = 8,
     parameter shift_w = 7
@@ -12,14 +12,15 @@ module core_partially_parallel #(
     input  clk,
     input  rst,
     input  start,
-    input  [1151:0] syn_in,
+    input  [1:0] code_rate, // 00: 1/2, 01: 2/3B, 10: 3/4B
+    input  [1535:0] syn_in,
     input  [Zc*data_w*24-1:0] llr_in_array,
     output reg done,
     output reg ir_success,
     output reg ir_fail_intr, 
     input  puncture_en,      
     input  resume_decoding,   
-    output reg [Zc*24-1:0] ldpc_res_out 
+    output [5:0] iter_out, output reg [Zc*24-1:0] ldpc_res_out 
 );
 
     wire [Zc*data_w-1:0] raw_llr_in; 
@@ -48,15 +49,19 @@ module core_partially_parallel #(
 
     localparam IDLE = 0, LOAD_LLR = 1, LAYER_READ = 2, LAYER_CALC = 3, LAYER_WRITE = 4, CHECK = 5, WAIT_FOR_EXTENSION = 6, EXTENSION_LOAD = 7, OUTPUT_RES = 8;
     reg [3:0] state, next_state;
-    reg [5:0] iter_count;
+    reg [6:0] iter_count;
+    assign iter_out = iter_count;
     reg [4:0] block_count, col_count;
     reg [3:0] layer_count; 
     reg [1:0] current_code_rate; 
+    wire [3:0] max_layer = (current_code_rate == 2'b00) ? 11 :
+                           (current_code_rate == 2'b01) ? 7 :
+                           (current_code_rate == 2'b10) ? 5 : 11;
     reg [4:0] calc_delay;
 
     wire [4:0] rom_row = layer_count;
     // Delay rom_col by 1 cycle to match the 1-cycle read latency of ldpc_bram
-    wire [4:0] rom_col = col_count_d1;
+    
     
     reg valid_read_0, valid_read_1, valid_read_2;
     always @(posedge clk) begin
@@ -83,6 +88,7 @@ module core_partially_parallel #(
     reg [3:0] valid_degree_count, write_degree_count;
 
     reg [4:0] col_count_d1, col_count_d2;
+    wire [4:0] rom_col = col_count;
     reg valid_conn_d1, valid_conn_d2;
     reg [shift_w-1:0] shift_val_d1, shift_val_d2;
     
@@ -110,7 +116,7 @@ module core_partially_parallel #(
     wire [Zc-1:0] parity_vector;
     
     wire [Zc*res_w*D_cnu-1:0] cnu_r_out;
-    cnu_cluster #(.Zc(Zc), .D(D_cnu), .res_w(res_w), .ext_w(ext_w), .idx_w(3)) u_cnu_cluster (
+    cnu_cluster #(.Zc(Zc), .D(D_cnu), .res_w(res_w), .ext_w(ext_w), .idx_w(4)) u_cnu_cluster (
         .clk(clk), .rst(rst), .en(1'b1), .active(1'b1),
         .syn_in(current_layer_syn), 
         .q_in(q_in_buffer_flat), 
@@ -121,7 +127,7 @@ module core_partially_parallel #(
     wire [shift_w-1:0] shift_val;
     wire valid_conn;
     rom_h_matrix #(.ROW_BITS(5), .COL_BITS(5), .SHIFT_W(shift_w)) u_rom (
-        .clk(clk), .row_idx(rom_row), .col_idx(rom_col), .shift_val(shift_val), .valid_conn(valid_conn)
+        .clk(clk), .code_rate(current_code_rate), .row_idx(rom_row), .col_idx(rom_col), .shift_val(shift_val), .valid_conn(valid_conn)
     );
 
     wire [shift_w-1:0] inv_shift_amt = (shift_val == 0) ? 0 : (Zc - shift_val);
@@ -145,6 +151,7 @@ module core_partially_parallel #(
     barrel_shifter #(.Zc(Zc), .word_w(res_w), .shift_w(shift_w)) u_inv_shifter (
         .data_in(c2v_new_shifted), .shift_amt(inv_shift_amt), .data_out(c2v_new_unshifted)
     );
+    wire [Zc*res_w-1:0] c2v_new_unshifted_sat;
 
     always @(posedge clk) begin
         col_count_d1 <= col_count;
@@ -171,8 +178,8 @@ module core_partially_parallel #(
             assign llr_new_shifted_array[gi*(res_w+ext_w) +: (res_w+ext_w)] = llr_new_shifted;
             
             wire signed [res_w+ext_w-1:0] llr_new_unshifted = shift_out[gi*(res_w+ext_w) +: (res_w+ext_w)];
-            wire [res_w-1:0] sat_max = (1 << (data_w-1)) - 1;
-            wire [res_w-1:0] sat_min = ~(sat_max);
+            wire [data_w-1:0] sat_max = (1 << (data_w-1)) - 1;
+            wire [data_w-1:0] sat_min = ~(sat_max);
             wire signed [data_w-1:0] llr_new_sat = (llr_new_unshifted > $signed(sat_max)) ? sat_max[data_w-1:0] :
                                                    (llr_new_unshifted < $signed(sat_min)) ? sat_min[data_w-1:0] : 
                                                    llr_new_unshifted[data_w-1:0];
@@ -189,7 +196,13 @@ module core_partially_parallel #(
             wire signed [res_w-1:0] diff_c2v_sat = (diff_c2v > $signed(c2v_sat_max)) ? c2v_sat_max :
                                                    (diff_c2v < $signed(c2v_sat_min)) ? c2v_sat_min :
                                                    diff_c2v[res_w-1:0];
-            // assign c2v_new_unshifted[gi*res_w +: res_w] = diff_c2v_sat; // REMOVED MULTIPLE DRIVER
+                        wire signed [res_w-1:0] c2v_unshifted_val = c2v_new_unshifted[gi*res_w +: res_w];
+              wire [res_w-1:0] c2v_sat_max_val = (1 << (res_w-1)) - 1;
+              wire [res_w-1:0] c2v_sat_min_val = ~(c2v_sat_max_val);
+            wire signed [res_w-1:0] c2v_new_sat = (c2v_unshifted_val > $signed(c2v_sat_max_val)) ? c2v_sat_max_val :
+                                                  (c2v_unshifted_val < $signed(c2v_sat_min_val)) ? c2v_sat_min_val :
+                                                  c2v_unshifted_val;
+            assign c2v_new_unshifted_sat[gi*res_w +: res_w] = c2v_new_sat;
         end
     endgenerate
 
@@ -213,6 +226,7 @@ module core_partially_parallel #(
                     done <= 1'b0;
                     if (start) begin
                         ir_success <= 1'b0; ir_fail_intr <= 1'b0;
+                        current_code_rate <= code_rate;
                     end
                 end
                 LOAD_LLR: begin
@@ -231,7 +245,7 @@ module core_partially_parallel #(
                     
                     llr_we <= 1'b0; c2v_we <= 1'b0;
                     if (col_count == 0) begin
-                        for(i=0; i<D_cnu; i=i+1) q_in_buffer[i] <= DUMMY_Q_IN;
+                        for(i=0; i<D_cnu; i=i+1) q_in_buffer[i] <= {Zc{DUMMY_Q_IN}};
                         valid_degree_count <= 0;
                     end
                     if (col_count < 26) begin
@@ -268,10 +282,10 @@ module core_partially_parallel #(
                     end
                     if (valid_read_1 && valid_conn) begin
                         llr_we <= 1'b1;
-                        llr_addr_w <= col_count_d2;
+                        llr_addr_w <= col_count_d1;
                         llr_din <= llr_din_math;
                         
-                        c2v_new_buffer[write_degree_count] <= c2v_new_unshifted;
+                        c2v_new_buffer[write_degree_count] <= c2v_new_unshifted_sat;
                         write_degree_count <= write_degree_count + 1;
                     end
                     if (col_count == 26) begin
@@ -281,7 +295,7 @@ module core_partially_parallel #(
                         c2v_din <= c2v_new_buffer_flat;
                         
                         layer_count <= layer_count + 1;
-                        if (layer_count == 11) begin
+                        if (layer_count == max_layer) begin
                             layer_count <= 0;
                             iter_count <= iter_count + 1;
                         end
@@ -290,6 +304,7 @@ module core_partially_parallel #(
                 CHECK: begin
                     if (all_layers_parity_ok) ir_success <= 1'b1; else ir_fail_intr <= 1'b1;
                     block_count <= 0;
+                    col_count <= 0;
                     llr_addr_r <= 0; // Pre-load RAM[0] so OUTPUT_RES has it ready
                 end 
                 WAIT_FOR_EXTENSION: begin
@@ -324,7 +339,7 @@ module core_partially_parallel #(
             LAYER_CALC: if (calc_delay == 5) next_state = LAYER_WRITE;
             LAYER_WRITE: begin
                 if (col_count == 26) begin
-                    if (layer_count == 11 && (iter_count >= 63 || all_layers_parity_ok)) next_state = CHECK;
+                    if (layer_count == max_layer && (iter_count >= 100 || all_layers_parity_ok)) next_state = CHECK;
                     else next_state = LAYER_READ;
                 end
             end

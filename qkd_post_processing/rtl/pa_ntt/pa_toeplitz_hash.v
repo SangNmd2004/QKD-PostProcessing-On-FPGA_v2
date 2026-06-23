@@ -35,6 +35,7 @@ module pa_toeplitz_hash #(
     localparam ST_RUN_INTT = 6;
     localparam ST_ACCUMULATE = 7;
     localparam ST_DONE = 8;
+    localparam ST_PRE_LOAD = 9;
     
     reg [3:0] state;
     reg [16:0] cnt;
@@ -115,6 +116,7 @@ module pa_toeplitz_hash #(
             mem_addr <= 0;
             bit_cnt <= 0;
             mult_valid_delay <= 0;
+            ntt_din <= 0;
         end else begin
             ntt_load_w <= 0;
             ntt_load_data <= 0;
@@ -132,6 +134,14 @@ module pa_toeplitz_hash #(
                         ntt_load_w <= 0;
                     end
                     
+                    // sys_cntr = cnt - 1. 
+                    // sys_cntr == 8190 is q.
+                    if (cnt == 8191) begin
+                        ntt_din <= 17'd65537; // q
+                    end else begin
+                        ntt_din <= 17'd1;     // twiddles and n_inv
+                    end
+                    
                     // NTTN.v takes exactly 8192 cycles to finish loading Twiddle factors when RING_DEPTH=12
                     if (cnt == 8200) begin
                         state <= ST_IDLE;
@@ -143,14 +153,18 @@ module pa_toeplitz_hash #(
                 
                 ST_IDLE: begin
                     if (block_ready) begin
-                        state <= ST_LOAD_X;
+                        state <= ST_PRE_LOAD;
                         pa_active <= 1;
-                        cnt <= 0;
                         mem_addr <= 0;
                         mem_en <= 1;
-                        bit_cnt <= 0;
                         pa_hash_out <= 0;
                     end
+                end
+                
+                ST_PRE_LOAD: begin
+                    state <= ST_LOAD_X;
+                    cnt <= 0;
+                    bit_cnt <= 0;
                 end
                 
                 ST_LOAD_X: begin
@@ -178,6 +192,7 @@ module pa_toeplitz_hash #(
                 
                 ST_RUN_NTT: begin
                     if (ntt_done) begin
+                        $display("[PA_DEBUG] NTT done! First ntt_dout = 0x%h", ntt_dout);
                         state <= ST_MULT_DESCRAMBLE;
                         cnt <= 1;
                         
@@ -211,6 +226,7 @@ module pa_toeplitz_hash #(
                     bit_rev_addr_delay[7] <= bit_rev_addr_delay[6];
                     
                     if (mult_valid_delay[7]) begin
+                        if (cnt == 8) $display("[PA_DEBUG] First mult_out = 0x%h", mult_out);
                         descramble_ram[bit_rev_addr_delay[7]] <= mult_out; 
                     end
                     
@@ -240,6 +256,7 @@ module pa_toeplitz_hash #(
                 
                 ST_RUN_INTT: begin
                     if (ntt_done) begin
+                        $display("[PA_DEBUG] INTT done! First ntt_dout = 0x%h", ntt_dout);
                         state <= ST_ACCUMULATE;
                         cnt <= 1;
                         pa_hash_out <= {pa_hash_out[HASH_LEN-2:0], pa_hash_out[HASH_LEN-1]} ^ ntt_dout;

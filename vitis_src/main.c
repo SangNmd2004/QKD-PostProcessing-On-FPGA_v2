@@ -133,20 +133,16 @@ int main() {
     xil_printf("[2] Data injected into FPGA Pipeline successfully. Waiting for LDPC...\r\n");
 
     // =======================================================
-    // KỊCH BẢN 2: LẮNG NGHE NGẮT (INTERRUPT SẼ TỰ KÍCH HOẠT) VÀ ĐỢI KEY
+    // KỊCH BẢN 2: LẮNG NGHE DMA HOÀN TẤT ĐỂ LẤY KẾT QUẢ LDPC
     // =======================================================
-    xil_printf("\r\n[3] Waiting for Toeplitz Hashing Algorithm (NTT Core) to finish...\r\n");
+    xil_printf("\r\n[3] Waiting for LDPC Error Reconciliation Core to finish...\r\n");
     
-    // Vòng lặp kẹt ở đây để đợi mảng S2MM nhận đủ 32 bytes Key
+    // Vòng lặp kẹt ở đây để đợi mảng S2MM nhận đủ 288 bytes Key từ LDPC
     int wait_cnt = 0;
     while (XAxiDma_Busy(&dma_syn_key, XAXIDMA_DEVICE_TO_DMA)) {
-        if (wait_cnt % 1000000 == 0) {
-            u32 status = XGpio_DiscreteRead(&gpio, 1);
-            xil_printf("DEBUG: pa_active = %lu\r\n", (status >> 1) & 0x01); // Giả sử pa_active nối vào bit 1 của GPIO1
-        }
         wait_cnt++;
         if (wait_cnt > 20000000) {
-            xil_printf("DEBUG: TIMEOUT! NTT Core is stuck!\r\n");
+            xil_printf("DEBUG: TIMEOUT! LDPC Core or DMA is stuck!\r\n");
             break;
         }
     }
@@ -155,8 +151,8 @@ int main() {
     Xil_DCacheInvalidateRange((UINTPTR)key_buffer, 288);
     
     xil_printf("\r\n=================================================\r\n");
-    xil_printf("[SUCCESS] ERROR CORRECTION COMPLETE!\r\n");
-    xil_printf("Decoded Codeword (288-byte Hex):\r\n");
+    xil_printf("[SUCCESS] ERROR RECONCILIATION COMPLETE!\r\n");
+    xil_printf("Decoded LDPC Codeword (288-byte Hex / PA Bypassed):\r\n");
     for (int i = 0; i < 288; i++) {
         xil_printf("%02X ", key_buffer[i]);
         if ((i + 1) % 16 == 0) xil_printf("\r\n");

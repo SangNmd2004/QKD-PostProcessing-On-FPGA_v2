@@ -1,7 +1,7 @@
 `timescale 1ns/1ps
 
 module qkd_post_processing_top #(
-    parameter LLR_W = 5,
+    parameter LLR_W = 6,
     parameter LDPC_BLOCK = 2304,
     parameter PA_DATA_W = 64, // AXI-Stream TDATA must be multiple of 8 bits
     parameter PA_RING_SIZE = 64
@@ -33,6 +33,7 @@ module qkd_post_processing_top #(
     
     // Trạng thái hệ thống
     output wire ir_success,
+    output wire [5:0] ldpc_iters_out,
     output wire pa_active
 );
 
@@ -97,24 +98,35 @@ module qkd_post_processing_top #(
     wire [LDPC_BLOCK-1:0] ldpc_res;
     wire ldpc_done;
 
+    wire [10*LDPC_BLOCK-1:0] ldpc_l_buffer_ext;
+    genvar gi_llr;
+    generate
+        for(gi_llr=0; gi_llr<LDPC_BLOCK; gi_llr=gi_llr+1) begin : gen_llr_ext
+            wire [LLR_W-1:0] val = ldpc_l_buffer[gi_llr*LLR_W +: LLR_W];
+            assign ldpc_l_buffer_ext[gi_llr*10 +: 10] = {{ (10-LLR_W){val[LLR_W-1]} }, val};
+        end
+    endgenerate
+
     // Sử dụng kiến trúc tiết kiệm tài nguyên mới nhất hỗ trợ Blind Reconciliation
     core_partially_parallel #(
         .Zc(96),
-        .data_w(LLR_W),
+        .data_w(10), // Increased internal LLR width to 10-bits to avoid early saturation
         .D_vnu(12),
-        .D_cnu(8),
-        .ext_w(0), // Failsafe: force ext_w to 0 to save LUTs
-        .res_w(5), // Shrink Check Node message to 5 bits to guarantee fitting in ZC702
+        .D_cnu(15), // Mở rộng lên 15 để hỗ trợ Rate 3/4B
+        .ext_w(3), // V2C width = res_w + ext_w = 8 + 3 = 11 bits (prevents overflow during 511 - (-128))
+        .res_w(8), // Restored to 8-bit C2V messages
         .shift_w(7)
     ) u_ldpc_core (
         .clk(clk),
         .rst(rst),
         .start(ldpc_en),
-        .llr_in_array(ldpc_l_buffer), // Bắt buộc phải có LLR_IN
+        .code_rate(code_rate),
+        .llr_in_array(ldpc_l_buffer_ext),
         .syn_in(syndrome_buffer),
         .done(ldpc_done),
         .ir_success(ir_success),
         .ir_fail_intr(ir_fail_intr),
+        .iter_out(ldpc_iters_out),
         .puncture_en(puncture_en),
         .resume_decoding(resume_decoding),
         .ldpc_res_out(ldpc_res)

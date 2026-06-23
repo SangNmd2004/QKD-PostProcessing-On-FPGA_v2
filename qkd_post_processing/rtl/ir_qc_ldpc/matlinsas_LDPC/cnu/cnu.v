@@ -17,7 +17,7 @@ input syn;
 output [res_w*D-1:0] r;
 output rsgn_out;
 
-assign rsgn_out = rsgn;
+
 
 wire	[data_w-1:0] min, min2;
 wire signed [data_w+1:0] tmin, tmin2;
@@ -27,6 +27,7 @@ wire	[idx_w-1:0] min_idx;
 wire	[D-1:0] qsgn;
 wire	[D-1:0] qsgn2;
 wire	rsgn;
+assign rsgn_out = rsgn;
 
 genvar i;
 
@@ -53,17 +54,24 @@ sgn_ram #(.D(D)) SRAM(
 	.rsgn(rsgn), .qsgn2(qsgn2), .syn(syn)
 );
 
-assign tmin = active ? {2'b0, min} : 0;
-assign tmin2 = active ? {2'b0, min2} : 0;
-wire signed [data_w+1:0] tmin_scaled = ( $signed((tmin<<<1)+tmin)>>>2 );
-wire signed [data_w+1:0] tmin2_scaled = ( $signed((tmin2<<<1)+tmin2)>>>2 );
+  assign tmin = active ? {2'b0, min} : 0;
+  assign tmin2 = active ? {2'b0, min2} : 0;
+// Offset Min-Sum: subtract beta=2, clamp to 0
+wire signed [data_w+1:0] tmin_scaled = ($signed(tmin) > 2) ? ($signed(tmin) - 2) : 0;
+wire signed [data_w+1:0] tmin2_scaled = ($signed(tmin2) > 2) ? ($signed(tmin2) - 2) : 0;
 
 generate
 for(i=0; i<D; i=i+1) begin :calc_r
-    // Normalized Min-Sum Algorithm with Two's Complement for perfect symmetry
-    assign r[i*res_w +:res_w] = (min_idx == i)?
+    wire signed [data_w+1:0] un_sat_r = (min_idx == i)?
             ( (rsgn^qsgn2[i])? -$signed(tmin2_scaled) : tmin2_scaled ):
             ( (rsgn^qsgn2[i])? -$signed(tmin_scaled) : tmin_scaled );
+            
+    wire signed [res_w-1:0] sat_max_r = (1 << (res_w-1)) - 1;
+    wire signed [res_w-1:0] sat_min_r = ~(sat_max_r);
+    
+    assign r[i*res_w +: res_w] = (un_sat_r > sat_max_r) ? sat_max_r :
+                                 (un_sat_r < sat_min_r) ? sat_min_r :
+                                 un_sat_r[res_w-1:0];
 end
 endgenerate
 

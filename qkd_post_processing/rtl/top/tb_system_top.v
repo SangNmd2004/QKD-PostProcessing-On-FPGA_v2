@@ -1,218 +1,172 @@
 `timescale 1ns/1ps
 
-// Testbench Cấp Hệ Thống (System-Level) cho Kiến trúc QKD Mới
-// Kiểm tra khả năng tương tác giữa: AXI -> LDPC (Partially Parallel) -> HW Interrupt -> NTT Hash -> AXI
-module tb_system_top();
+module tb_system_top;
 
-    // Khai báo tín hiệu Clock & Reset
+    parameter LLR_W = 6;
+    parameter LDPC_BLOCK = 2304;
+    parameter PA_DATA_W = 14;
+
     reg clk;
     reg rst;
     
-    // Giao tiếp Điều khiển (PS-PL)
-    reg [1:0] code_rate;
-    wire ir_fail_intr;
-    reg resume_decoding;
-    reg puncture_en;
-    
-    // Giao tiếp AXI-Stream Input (LLR)
-    reg [7:0] s_axis_llr_tdata;
+    // AXI-Stream Input (LLR)
+    reg [LLR_W-1:0] s_axis_llr_tdata;
     reg s_axis_llr_tvalid;
     wire s_axis_llr_tready;
     
-    // Giao tiếp AXI-Stream Input (Syndrome)
+    // AXI-Stream Input (Syndrome)
     reg [7:0] s_axis_syn_tdata;
     reg s_axis_syn_tvalid;
     wire s_axis_syn_tready;
     
-    // Giao tiếp AXI-Stream Output (Secret Key)
+    // AXI-Stream Output
     wire [63:0] m_axis_key_tdata;
     wire m_axis_key_tvalid;
     reg m_axis_key_tready;
-    wire m_axis_key_tlast;
     
-    // Tín hiệu Trạng thái
     wire ir_success;
     wire pa_active;
+    wire tx_err_feedback;
+    wire ir_fail_intr;
     
-    // ========================================================
-    // Instantiation: Module Top-Level Của Hệ Thống QKD
-    // ========================================================
+    reg [1:0] code_rate = 2'b00; // Test Rate 1/2
+    
     qkd_post_processing_top #(
-        .LLR_W(5), .LDPC_BLOCK(2304), .PA_DATA_W(64), .PA_RING_SIZE(64)
+        .LLR_W(LLR_W),
+        .LDPC_BLOCK(LDPC_BLOCK),
+        .PA_DATA_W(64),
+        .PA_RING_SIZE(512)
     ) dut (
-        .clk(clk), .rst(rst), .code_rate(code_rate),
-        // LLR AXI
-        .s_axis_llr_tdata(s_axis_llr_tdata), .s_axis_llr_tvalid(s_axis_llr_tvalid), .s_axis_llr_tready(s_axis_llr_tready),
-        // Syndrome AXI
-        .s_axis_syn_tdata(s_axis_syn_tdata), .s_axis_syn_tvalid(s_axis_syn_tvalid), .s_axis_syn_tready(s_axis_syn_tready),
-        // Key AXI
-        .m_axis_key_tdata(m_axis_key_tdata), .m_axis_key_tvalid(m_axis_key_tvalid), .m_axis_key_tready(m_axis_key_tready), .m_axis_key_tlast(m_axis_key_tlast),
-        // HW/SW Co-design
-        .ir_fail_intr(ir_fail_intr), .resume_decoding(resume_decoding), .puncture_en(puncture_en),
-        // Status
-        .ir_success(ir_success), .pa_active(pa_active)
+        .clk(clk),
+        .rst(rst),
+        .code_rate(code_rate),
+        .s_axis_llr_tdata(s_axis_llr_tdata),
+        .s_axis_llr_tvalid(s_axis_llr_tvalid),
+        .s_axis_llr_tready(s_axis_llr_tready),
+        .s_axis_syn_tdata(s_axis_syn_tdata),
+        .s_axis_syn_tvalid(s_axis_syn_tvalid),
+        .s_axis_syn_tready(s_axis_syn_tready),
+        .m_axis_key_tdata(m_axis_key_tdata),
+        .m_axis_key_tvalid(m_axis_key_tvalid),
+        .m_axis_key_tready(m_axis_key_tready),
+        .m_axis_key_tlast(),
+        .ir_success(ir_success),
+        .pa_active(pa_active),
+        .ir_fail_intr(ir_fail_intr),
+        .resume_decoding(1'b0),
+        .puncture_en(1'b0),
+        .ldpc_iters_out()
     );
-    
-    // ========================================================
-    // Khởi tạo Clock 100MHz
-    // ========================================================
+
+    // Xung nhịp
     initial begin
         clk = 0;
-        forever #5 clk = ~clk; 
-    end
-    
-    // ========================================================
-    // Task: Bơm dữ liệu LLR ngẫu nhiên vào FPGA qua AXI-Stream
-    // ========================================================
-    task send_llr_block;
-        integer i;
-        begin
-            $display("[%0t] [AXI_LLR] Starting to send LLR block (2304 chunks)...", $time);
-            #1 s_axis_llr_tvalid = 1;
-            for(i=0; i < 2304; i=i+1) begin
-                #1 s_axis_llr_tdata = $random;
-                @(posedge clk);
-                while(!s_axis_llr_tready) @(posedge clk);
-            end
-            #1 s_axis_llr_tvalid = 0;
-            $display("[%0t] [AXI_LLR] Finished sending LLR.", $time);
-        end
-    endtask
-
-    task send_syn_block;
-        integer i;
-        begin
-            $display("[%0t] [AXI_SYN] Starting to send Syndrome block (144 chunks)...", $time);
-            #1 s_axis_syn_tvalid = 1;
-            for(i=0; i < 144; i=i+1) begin
-                #1 s_axis_syn_tdata = $random;
-                @(posedge clk);
-                while(!s_axis_syn_tready) @(posedge clk);
-            end
-            #1 s_axis_syn_tvalid = 0;
-            $display("[%0t] [AXI_SYN] Finished sending Syndrome.", $time);
-        end
-    endtask
-
-    // Debug Monitor
-    reg last_ldpc_en;
-    reg [2:0] last_state;
-    initial begin
-        last_ldpc_en = 0;
-        last_state = 0;
-    end
-    always @(posedge clk) begin
-        if (dut.ldpc_en != last_ldpc_en) begin
-            $display("[%0t] [DEBUG] ldpc_en changed: %b -> %b", $time, last_ldpc_en, dut.ldpc_en);
-            last_ldpc_en = dut.ldpc_en;
-        end
-        if (dut.u_ldpc_core.state != last_state) begin
-            $display("[%0t] [DEBUG] FSM state changed: %d -> %d", $time, last_state, dut.u_ldpc_core.state);
-            last_state = dut.u_ldpc_core.state;
-        end
-        
-        // Print when ldpc_start or syn_start become 1
-        if (dut.ldpc_start && !dut.ldpc_en && $time > 23000000) 
-            $display("[%0t] [DEBUG] ldpc_start is HIGH!", $time);
-    end
-    
-    // Tiến độ NTT Hash (để không lầm tưởng là bị kẹt)
-    reg [31:0] ntt_cycle_cnt;
-    initial ntt_cycle_cnt = 0;
-    always @(posedge clk) begin
-        if (pa_active) begin
-            ntt_cycle_cnt = ntt_cycle_cnt + 1;
-            if (ntt_cycle_cnt % 10000 == 0) begin
-                $display("[%0t] [NTT_HASH] Progress: %d / 70000 clock cycles... | pa_state: %d | ntt_state: %d", 
-                         $time, ntt_cycle_cnt, dut.pa_hash_core.state, dut.pa_hash_core.ntt_core.state);
-            end
-        end else begin
-            ntt_cycle_cnt = 0;
-        end
+        forever #5 clk = ~clk;
     end
 
+    // Lưu dữ liệu mô phỏng
+    reg [LLR_W-1:0] llr_mem [0:LDPC_BLOCK-1];
+    reg [0:0] syn_mem [0:1151];
+    reg [0:0] expected_mem [0:LDPC_BLOCK-1];
+
+    integer i, j, k;
+    integer err_count;
     initial begin
         rst = 1;
-        code_rate = 2'b00;
         s_axis_llr_tvalid = 0;
+        s_axis_llr_tdata = 0;
         s_axis_syn_tvalid = 0;
-        m_axis_key_tready = 1; 
-        resume_decoding = 0;
-        puncture_en = 0;
+        s_axis_syn_tdata = 0;
+        m_axis_key_tready = 1;
+
+        // Đọc dữ liệu mô phỏng từ file
+        $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/llr_in.txt", llr_mem);
+        $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in.txt", syn_mem);
+        $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/expected_out.txt", expected_mem);
         
-        #100; rst = 0; #100;
+        #20 rst = 0;
         
-        $display("-----------------------------------------------------");
-        $display("=== SCENARIO 1: Sending AXI Streams & Puncturing ===");
-        $display("-----------------------------------------------------");
-        puncture_en = 1; 
+        $display("Starting AXI-Stream Data Transfer...");
         
         fork
-            send_llr_block();
-            send_syn_block();
+            // Thread 1: Load LLR
+            begin
+                for (i = 0; i < LDPC_BLOCK; i = i + 1) begin
+                    wait(s_axis_llr_tready);
+                    @(posedge clk);
+                    #1;
+                    s_axis_llr_tdata = llr_mem[i];
+                    s_axis_llr_tvalid = 1;
+                end
+                @(posedge clk);
+                #1;
+                s_axis_llr_tvalid = 0;
+                $display("Loaded %0d LLR elements.", LDPC_BLOCK);
+            end
+            
+            // Thread 2: Load Syndrome
+            begin
+                for (k = 0; k < 1152; k = k + 8) begin
+                    wait(s_axis_syn_tready);
+                    @(posedge clk);
+                    #1;
+                    // Pack 8 syndrome bits into 1 byte
+                    s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
+                                        syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
+                    s_axis_syn_tvalid = 1;
+                end
+                @(posedge clk);
+                #1;
+                s_axis_syn_tvalid = 0;
+                $display("Loaded 144 bytes of Syndrome.");
+            end
         join
         
-        $display("-----------------------------------------------------");
-        $display("=== SCENARIO 2: LDPC Decoding & HW Interrupt ===");
-        $display("-----------------------------------------------------");
-        $display("[%0t] [LDPC_CORE] Waiting for Min-Sum FSM loop...", $time);
-        
-        wait(ir_fail_intr == 1 || ir_success == 1);
+        $display("Waiting for IR (LDPC) Module to complete Syndrome-based decoding...");
+        // Wait for IR to complete
+        wait(ir_success || ir_fail_intr);
         
         if (ir_fail_intr) begin
-            $display("[%0t] [INTERRUPT] HW Interrupt Asserted! ir_fail_intr = 1.", $time);
-            $display("[%0t] [FREEZE] Freezing Quantum State for Blind Reconciliation.", $time);
-            
-            #500;
-            $display("[%0t] [ZYNQ_PS] Expanded Matrix written. Asserting Resume...", $time);
-            resume_decoding = 1;
-            #10;
-            resume_decoding = 0;
-            
-            wait(ir_success == 1 || ir_fail_intr == 1);
-            if (ir_success)
-                $display("[%0t] [SUCCESS] BLIND RECONCILIATION SUCCESSFUL!", $time);
+            $display(">>> [FAILED] Error Reconciliation (IR) Phase Failed! (Max iterations reached or Syndrome mismatch)");
+        end else begin
+            $display(">>> [SUCCESS] Error Reconciliation (IR) Phase Completed! Extracting Key...");
+        end
+        
+        // WAIT cho module LDPC xuất xong toàn bộ khóa ra thanh ghi (mất 25 xung nhịp sau khi check)
+        wait(m_axis_key_tvalid);
+        if (!ir_fail_intr) $display(">>> Key Extraction Complete! Transitioning to PA...");
+        
+        // Verify LDPC output data
+        #10;
+        begin
+              err_count = 0;
+              for(j = 0; j < LDPC_BLOCK; j = j + 1) begin
+                  if (dut.ldpc_res[j] !== expected_mem[j]) err_count = err_count + 1;
+                  if (j < 10) $display("ldpc_res[%0d]=%b, expected=%b", j, dut.ldpc_res[j], expected_mem[j]);
+              end
+              $display("-------------------------------------------------");
+            $display("DATA TEST RESULTS AFTER IR (LDPC) - SYNDROME DECODING:");
+            $display("Total Key Bits (Reconciled Key): %0d bits", LDPC_BLOCK);
+            $display("Remaining Error Bits: %0d bits", err_count);
+            if (err_count == 0)
+                $display("=> Excellent! The key is completely error-free (Matched Golden Model).");
             else
-                $display("[%0t] [WARNING] Second Decoding Pass Failed (Expected for Random Data).", $time);
+                $display("=> Errors still remain! LDPC algorithm requires review.");
+            $display("-------------------------------------------------");
         end
         
-        $display("-----------------------------------------------------");
-        $display("=== SCENARIO 3: Privacy Amplification NTT Hash ===");
-        $display("-----------------------------------------------------");
+        // Wait for PA activation
+        wait(pa_active);
+        $display(">>> Privacy Amplification (PA) is executing Toeplitz Hash...");
         
-        $display("[%0t] [NTT_HASH] Loading Ping-Pong BRAM (Requires 2 LDPC blocks)...", $time);
-        
-        // Ta dùng lệnh Force để giả lập tín hiệu ir_success bật sáng 2 lần
-        // Mỗi lần đẩy 2304 bits (36 chunks) vào BRAM. BRAM cần 64 chunks (4096 bits).
-        begin : PUMP_BLOCKS
-            integer k;
-            for(k=0; k<2; k=k+1) begin
-                @(posedge clk);
-                #1 force dut.u_ldpc_core.ir_success = 1;
-                
-                @(posedge clk);
-                #1 release dut.u_ldpc_core.ir_success;
-                
-                // Đợi mạch truyền xong 36 chunks (36 * 10ns = 360ns)
-                // Dùng Fixed Delay thay vì wait(p_ready_out) để tránh việc Vivado Optimizer xóa mất port không dùng
-                #400;
-            end
-        end
-        wait(pa_active == 1);
-        $display("[%0t] [NTT_HASH] Active! Hashing data...", $time);
-        
-        wait(m_axis_key_tvalid == 1);
-        $display("[%0t] [AXI_KEY] First 64-bit Secret Key output: %h", $time, m_axis_key_tdata);
-        
-        wait(m_axis_key_tlast == 1);
-        $display("[%0t] [AXI_KEY] [PASSED] 256-bit Final Secret Key exported successfully!", $time);
-        
-        $display("-----------------------------------------------------");
-        $display("[%0t] SIMULATION COMPLETE. ALL MODULES VERIFIED!", $time);
-        $display("-----------------------------------------------------");
-        
-        #1000;
+        // Stop simulation early since PA is bypassed for synthesis
+        #2000;
+        $display("System Top Simulation Complete!");
         $finish;
+    end
+
+    always @(posedge clk) begin
+        // Monitor debug removed due to IP interface change
     end
 
 endmodule
