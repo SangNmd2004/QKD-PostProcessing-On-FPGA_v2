@@ -67,7 +67,7 @@ def generate_from_csv():
         llr_bytes = []
         syn_bytes = []
         
-        for b in [2]: # Test Block 2 từ file CSV lớn
+        for b in range(6): # Test Blocks 0 to 5 from CSV
             alice_blk = alice_arr[b*N : (b+1)*N]
             bob_blk = bob_arr[b*N : (b+1)*N]
             

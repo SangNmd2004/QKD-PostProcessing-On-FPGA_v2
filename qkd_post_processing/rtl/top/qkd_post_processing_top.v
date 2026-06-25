@@ -116,7 +116,8 @@ module qkd_post_processing_top #(
         .D_cnu(15), // Mở rộng lên 15 để hỗ trợ Rate 3/4B
         .ext_w(3), // V2C width = res_w + ext_w = 8 + 3 = 11 bits (prevents overflow during 511 - (-128))
         .res_w(8), // Restored to 8-bit C2V messages
-        .shift_w(7)
+        .shift_w(7),
+        .MAX_ITER(50)
     ) u_ldpc_core (
         .clk(clk),
         .rst(rst),
@@ -141,6 +142,7 @@ module qkd_post_processing_top #(
     wire axis_ir_to_pa_tready;
     wire axis_ir_to_pa_tlast;
 
+    /* --- DISABLED PA MODULES TO SAVE RESOURCES ---
     parallel_to_axis #(
         .DATA_W(64),
         .BLOCK_BITS(4096) // Zero-pad from 2304 to 4096 to satisfy NTT Core's power-of-2 requirement
@@ -186,41 +188,75 @@ module qkd_post_processing_top #(
     wire [255:0] hash_parallel_out;
     wire hash_parallel_valid;
     
-    pa_toeplitz_hash #(
-        .KEY_LEN(4096),
-        .HASH_LEN(256), // Production-ready 256-bit hash
-        .NTT_N(4096),
-        .DATA_W(17)
-    ) pa_hash_core (
-        .clk(clk),
-        .rst(rst),
-        .mem_addr(pa_mem_addr),
-        .mem_dout(pa_mem_dout),
-        .mem_en(pa_mem_en),
-        .block_ready(pa_block_ready),
-        
-        .pa_hash_out(hash_parallel_out),
-        .pa_hash_valid(hash_parallel_valid),
-        .pa_active(pa_active)
-    );
+    // pa_toeplitz_hash #(
+    //     .KEY_LEN(4096),
+    //     .HASH_LEN(256), // Production-ready 256-bit hash
+    //     .NTT_N(4096),
+    //     .DATA_W(17)
+    // ) pa_hash_core (
+    //     .clk(clk),
+    //     .rst(rst),
+    //     .mem_addr(pa_mem_addr),
+    //     .mem_dout(pa_mem_dout),
+    //     .mem_en(pa_mem_en),
+    //     .block_ready(pa_block_ready),
+    //     
+    //     .pa_hash_out(hash_parallel_out),
+    //     .pa_hash_valid(hash_parallel_valid),
+    //     .pa_active(pa_active)
+    // );
+    
+    assign pa_active = 1'b0; // Driven to 0 since PA is disabled
+    --- END DISABLED PA MODULES --- */
+
 
     // ==========================================
-    // 8. MODULE: Hash Output Serializer (AXI-Stream) - BYPASSED FOR DEBUGGING
+    // 8. MODULE: LDPC Output Serializer (AXI-Stream) - NO PA
     // ==========================================
+    wire [PA_DATA_W-1:0] axis_ldpc_to_bch_tdata;
+    wire                 axis_ldpc_to_bch_tvalid;
+    wire                 axis_ldpc_to_bch_tready;
+    wire                 axis_ldpc_to_bch_tlast;
+
     parallel_to_axis #(
         .DATA_W(PA_DATA_W), // 64-bit output stream
-        .BLOCK_BITS(2304)   // Thay đổi từ 256 thành 2304 bits (288 Bytes) để xuất trọn vẹn Codeword
-    ) u_parallel_to_axis_hash (
+        .BLOCK_BITS(2304)   // Xuất trọn vẹn Codeword 2304 bits (288 Bytes)
+    ) u_parallel_to_axis_ldpc (
         .clk(clk),
         .rst(rst),
         .p_data_in(ldpc_res),   // Bypass PA: Trỏ thẳng vào kết quả của LDPC
         .p_valid_in(ldpc_done), // Bypass PA: Kích hoạt ngay khi LDPC xong
         .p_ready_out(),
         
-        .m_axis_tdata(m_axis_key_tdata),
-        .m_axis_tvalid(m_axis_key_tvalid),
-        .m_axis_tready(m_axis_key_tready),
-        .m_axis_tlast(m_axis_key_tlast)
+        .m_axis_tdata(axis_ldpc_to_bch_tdata),
+        .m_axis_tvalid(axis_ldpc_to_bch_tvalid),
+        .m_axis_tready(axis_ldpc_to_bch_tready),
+        .m_axis_tlast(axis_ldpc_to_bch_tlast)
+    );
+
+    // ==========================================
+    // 9. MODULE: BCH Cleaner Wrapper (Bypassable)
+    // ==========================================
+    // BYPASS = 0: Active Mode. Data flows through the RS Decoder.
+    // If you need to disable RS later, change to 1'b1.
+    wire bypass_bch = 1'b1;
+
+    bch_cleaner_wrapper #(
+        .DATA_W(PA_DATA_W)
+    ) u_bch_cleaner_wrapper (
+        .clk(clk),
+        .rst(rst),
+        .bypass_bch(bypass_bch),
+        
+        .s_axis_ldpc_tdata(axis_ldpc_to_bch_tdata),
+        .s_axis_ldpc_tvalid(axis_ldpc_to_bch_tvalid),
+        .s_axis_ldpc_tready(axis_ldpc_to_bch_tready),
+        .s_axis_ldpc_tlast(axis_ldpc_to_bch_tlast),
+        
+        .m_axis_out_tdata(m_axis_key_tdata),
+        .m_axis_out_tvalid(m_axis_key_tvalid),
+        .m_axis_out_tready(m_axis_key_tready),
+        .m_axis_out_tlast(m_axis_key_tlast)
     );
 
     // ==========================================

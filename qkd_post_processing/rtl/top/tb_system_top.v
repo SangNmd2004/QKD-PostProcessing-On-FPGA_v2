@@ -65,13 +65,16 @@ module tb_system_top;
         forever #5 clk = ~clk;
     end
 
-    // Lưu dữ liệu mô phỏng
-    reg [LLR_W-1:0] llr_mem [0:LDPC_BLOCK-1];
-    reg [0:0] syn_mem [0:1151];
-    reg [0:0] expected_mem [0:LDPC_BLOCK-1];
+    // Lưu dữ liệu mô phỏng cho 6 blocks
+    reg [LLR_W-1:0] llr_mem [0:LDPC_BLOCK*6-1];
+    reg [0:0] syn_mem [0:1152*6-1];
+    reg [0:0] expected_mem [0:LDPC_BLOCK*6-1];
 
     integer i, j, k;
     integer err_count;
+    integer block_idx;
+    integer err_counts_per_block [0:5];
+    reg status_per_block [0:5];
     initial begin
         rst = 1;
         s_axis_llr_tvalid = 0;
@@ -87,135 +90,156 @@ module tb_system_top;
         
         #20 rst = 0;
         
-        $display("Starting AXI-Stream Data Transfer...");
+        $display("Starting AXI-Stream Data Transfer for 6 Continuous Blocks...");
         
-        fork
-            // Thread 1: Load LLR
-            begin
-                for (i = 0; i < LDPC_BLOCK; i = i + 1) begin
-                    wait(s_axis_llr_tready);
-                    @(posedge clk);
-                    #1;
-                    s_axis_llr_tdata = llr_mem[i];
-                    s_axis_llr_tvalid = 1;
-                end
-                @(posedge clk);
-                #1;
-                s_axis_llr_tvalid = 0;
-                $display("Loaded %0d LLR elements.", LDPC_BLOCK);
-            end
+        for (block_idx = 0; block_idx < 6; block_idx = block_idx + 1) begin
+            $display("=================================================");
+            $display("PROCESSING BLOCK %0d", block_idx);
+            $display("=================================================");
             
-            // Thread 2: Load Syndrome
-            begin
-                for (k = 0; k < 1152; k = k + 8) begin
-                    wait(s_axis_syn_tready);
-                    @(posedge clk);
-                    #1;
-                    if (k < 576) begin
-                        s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
-                                            syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
-                    end else begin
-                        s_axis_syn_tdata = 8'd0; // Zero padding
+            fork
+                // Thread 1: Load LLR
+                begin
+                    for (i = 0; i < LDPC_BLOCK; i = i + 1) begin
+                        wait(s_axis_llr_tready);
+                        @(posedge clk);
+                        #1;
+                        s_axis_llr_tdata = llr_mem[block_idx * 2304 + i];
+                        s_axis_llr_tvalid = 1;
                     end
-                    s_axis_syn_tvalid = 1;
+                    @(posedge clk);
+                    #1;
+                    s_axis_llr_tvalid = 0;
+                    $display("[Block %0d] Loaded %0d LLR elements.", block_idx, LDPC_BLOCK);
                 end
-                @(posedge clk);
-                #1;
-                s_axis_syn_tvalid = 0;
-                $display("Loaded 72 bytes of Syndrome (Rate 3/4).");
-            end
-        join
-        
-        $display("Waiting for IR (LDPC) Module to complete Syndrome-based decoding (Rate 3/4)...");
-        wait(ir_success || ir_fail_intr);
-        
-        if (ir_fail_intr) begin
-            $display(">>> [FAILED] Rate 3/4 Failed! Tiến hành Blind Reconciliation (Hạ xuống Rate 2/3)...");
-            @(posedge clk); #1;
-            for (k = 0; k < 1152; k = k + 8) begin
-                wait(s_axis_syn_tready);
-                @(posedge clk); #1;
-                if (k < 768) begin
-                    s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
-                                        syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
-                end else begin
-                    s_axis_syn_tdata = 8'd0;
+                
+                // Thread 2: Load Syndrome
+                begin
+                    for (k = 0; k < 1152; k = k + 8) begin
+                        wait(s_axis_syn_tready);
+                        @(posedge clk);
+                        #1;
+                        if (k < 576) begin
+                            s_axis_syn_tdata = {syn_mem[block_idx * 1152 + k+7], syn_mem[block_idx * 1152 + k+6], 
+                                                syn_mem[block_idx * 1152 + k+5], syn_mem[block_idx * 1152 + k+4],
+                                                syn_mem[block_idx * 1152 + k+3], syn_mem[block_idx * 1152 + k+2], 
+                                                syn_mem[block_idx * 1152 + k+1], syn_mem[block_idx * 1152 + k]};
+                        end else begin
+                            s_axis_syn_tdata = 8'd0; // Zero padding
+                        end
+                        s_axis_syn_tvalid = 1;
+                    end
+                    @(posedge clk);
+                    #1;
+                    s_axis_syn_tvalid = 0;
+                    $display("[Block %0d] Loaded 72 bytes of Syndrome (Rate 3/4).", block_idx);
                 end
-                s_axis_syn_tvalid = 1;
-            end
-            @(posedge clk); #1;
-            s_axis_syn_tvalid = 0;
-            $display("Loaded 96 bytes of Syndrome (Rate 2/3).");
+            join
             
-            resume_decoding = 1;
-            @(posedge clk); #1;
-            resume_decoding = 0;
+            // Fix Race Condition: Wait for hardware to process 'start' and clear old 'ir_fail_intr'
+            #20;
             
+            $display("[Block %0d] Waiting for IR Module to complete Syndrome-based decoding (Rate 3/4)...", block_idx);
             wait(ir_success || ir_fail_intr);
-            if (ir_fail_intr) begin
-                $display(">>> [FAILED] Rate 2/3 Failed! Tiến hành Blind Reconciliation (Hạ xuống Rate 1/2)...");
-                @(posedge clk); #1;
-                for (k = 0; k < 1152; k = k + 8) begin
-                    wait(s_axis_syn_tready);
+            
+                if (ir_fail_intr) begin
+                    $display(">>> [Block %0d] [FAILED] Rate 3/4 Failed! Tiến hành Blind Reconciliation (Hạ xuống Rate 2/3)...", block_idx);
                     @(posedge clk); #1;
-                    s_axis_syn_tdata = {syn_mem[k+7], syn_mem[k+6], syn_mem[k+5], syn_mem[k+4],
-                                        syn_mem[k+3], syn_mem[k+2], syn_mem[k+1], syn_mem[k]};
-                    s_axis_syn_tvalid = 1;
+                    for (k = 0; k < 1152; k = k + 8) begin
+                        wait(s_axis_syn_tready);
+                        if (k < 768) begin
+                            s_axis_syn_tdata = {syn_mem[block_idx * 1152 + k+7], syn_mem[block_idx * 1152 + k+6], 
+                                                syn_mem[block_idx * 1152 + k+5], syn_mem[block_idx * 1152 + k+4],
+                                                syn_mem[block_idx * 1152 + k+3], syn_mem[block_idx * 1152 + k+2], 
+                                                syn_mem[block_idx * 1152 + k+1], syn_mem[block_idx * 1152 + k]};
+                        end else begin
+                            s_axis_syn_tdata = 8'd0;
+                        end
+                        s_axis_syn_tvalid = 1;
+                        @(posedge clk); #1;
+                    end
+                    s_axis_syn_tvalid = 0;
+                    $display("[Block %0d] Loaded 96 bytes of Syndrome (Rate 2/3).", block_idx);
+                    
+                    resume_decoding = 1;
+                    @(posedge clk); #1;
+                    resume_decoding = 0;
+                    
+                    wait(!ir_fail_intr);
+                    wait(ir_success || ir_fail_intr);
+                if (ir_fail_intr) begin
+                    $display(">>> [Block %0d] [FAILED] Rate 2/3 Failed! Tiến hành Blind Reconciliation (Hạ xuống Rate 1/2)...", block_idx);
+                    @(posedge clk); #1;
+                    for (k = 0; k < 1152; k = k + 8) begin
+                        wait(s_axis_syn_tready);
+                        s_axis_syn_tdata = {syn_mem[block_idx * 1152 + k+7], syn_mem[block_idx * 1152 + k+6], 
+                                            syn_mem[block_idx * 1152 + k+5], syn_mem[block_idx * 1152 + k+4],
+                                            syn_mem[block_idx * 1152 + k+3], syn_mem[block_idx * 1152 + k+2], 
+                                            syn_mem[block_idx * 1152 + k+1], syn_mem[block_idx * 1152 + k]};
+                        s_axis_syn_tvalid = 1;
+                        @(posedge clk); #1;
+                    end
+                    s_axis_syn_tvalid = 0;
+                    $display("[Block %0d] Loaded 144 bytes of Syndrome (Rate 1/2).", block_idx);
+                    
+                    resume_decoding = 1;
+                    @(posedge clk); #1;
+                    resume_decoding = 0;
+                    
+                    wait(!ir_fail_intr);
+                    wait(ir_success || ir_fail_intr);
                 end
-                @(posedge clk); #1;
-                s_axis_syn_tvalid = 0;
-                $display("Loaded 144 bytes of Syndrome (Rate 1/2).");
-                
-                resume_decoding = 1;
-                @(posedge clk); #1;
-                resume_decoding = 0;
-                
-                wait(ir_success || ir_fail_intr);
-            end
-        end
-        
-        if (ir_fail_intr) begin
-            $display(">>> [FAILED] Error Reconciliation Phase Failed completely!");
-        end else begin
-            $display(">>> [SUCCESS] Error Reconciliation Phase Completed!");
-        end
-        
-        // WAIT cho module LDPC xuất xong toàn bộ khóa ra thanh ghi (mất 25 xung nhịp sau khi check)
-        wait(m_axis_key_tvalid);
-        if (!ir_fail_intr) $display(">>> Key Extraction Complete! Transitioning to PA...");
-        
-        // Verify LDPC output data
-        #10;
-        begin : VERIFY_BLOCK
-            integer f_out, f_exp;
-            f_out = $fopen("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/hw_output.txt", "w");
-            f_exp = $fopen("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/hw_expected.txt", "w");
-
-            err_count = 0;
-            for(j = 0; j < LDPC_BLOCK; j = j + 1) begin
-                $fdisplay(f_out, "%b", dut.ldpc_res[j]);
-                $fdisplay(f_exp, "%b", expected_mem[j]);
-                if (dut.ldpc_res[j] !== expected_mem[j]) err_count = err_count + 1;
-                if (j < 10) $display("ldpc_res[%0d]=%b, expected=%b", j, dut.ldpc_res[j], expected_mem[j]);
             end
             
-            $fclose(f_out);
-            $fclose(f_exp);
-            $display(">>> Wrote hardware output and expected output to data/hw_output.txt and data/hw_expected.txt");
-              $display("-------------------------------------------------");
-            $display("DATA TEST RESULTS AFTER IR (LDPC) - SYNDROME DECODING:");
-            $display("Total Key Bits (Reconciled Key): %0d bits", LDPC_BLOCK);
-            $display("Remaining Error Bits: %0d bits", err_count);
-            if (err_count == 0)
-                $display("=> Excellent! The key is completely error-free (Matched Golden Model).");
-            else
-                $display("=> Errors still remain! LDPC algorithm requires review.");
-            $display("-------------------------------------------------");
+            if (ir_fail_intr) begin
+                $display(">>> [Block %0d] [FAILED] Error Reconciliation Phase Failed completely!", block_idx);
+                status_per_block[block_idx] = 0;
+            end else begin
+                $display(">>> [Block %0d] [SUCCESS] Error Reconciliation Phase Completed!", block_idx);
+                status_per_block[block_idx] = 1;
+            end
+            
+            // WAIT cho module LDPC xuất xong toàn bộ khóa ra thanh ghi
+            wait(m_axis_key_tvalid);
+            
+            // Verify LDPC output data
+            #10;
+            begin : VERIFY_BLOCK
+                err_count = 0;
+                for(j = 0; j < LDPC_BLOCK; j = j + 1) begin
+                    if (dut.ldpc_res[j] !== expected_mem[block_idx * 2304 + j]) err_count = err_count + 1;
+                end
+                
+                err_counts_per_block[block_idx] = err_count;
+                $display("[Block %0d] Remaining Error Bits: %0d bits", block_idx, err_count);
+                if (err_count == 0)
+                    $display("=> Excellent! The key is completely error-free.");
+                else
+                    $display("=> Errors still remain!");
+            end
+            
+            // Đợi một khoảng thời gian trước khi nạp Block tiếp theo
+            #100;
         end
         
-        // Wait for PA activation
-        wait(pa_active);
-        $display(">>> Privacy Amplification (PA) is executing Toeplitz Hash...");
+        $display("=================================================");
+        $display("          BATCH SIMULATION SUMMARY               ");
+        $display("=================================================");
+        $display("| Block ID | Final Errors | Status              |");
+        $display("|----------|--------------|---------------------|");
+        for (block_idx = 0; block_idx < 6; block_idx = block_idx + 1) begin
+            if (err_counts_per_block[block_idx] == 0 && status_per_block[block_idx])
+                $display("| Block %0d  | %12d | %19s |", block_idx, err_counts_per_block[block_idx], "SUCCESS");
+            else if (err_counts_per_block[block_idx] == 0 && !status_per_block[block_idx])
+                $display("| Block %0d  | %12d | %19s |", block_idx, err_counts_per_block[block_idx], "SUCCESS (Oscillated)");
+            else
+                $display("| Block %0d  | %12d | %19s |", block_idx, err_counts_per_block[block_idx], "FAILED");
+        end
+        $display("=================================================");
+        
+        // PA Module bypassed
+        // wait(pa_active);
+        // $display(">>> Privacy Amplification (PA) is executing Toeplitz Hash...");
         
         // Stop simulation early since PA is bypassed for synthesis
         #2000;

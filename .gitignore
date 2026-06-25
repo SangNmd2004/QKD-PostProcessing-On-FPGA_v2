@@ -49,3 +49,8 @@ qkd_fso-main/
 
 # Backup files
 *.bak
+
+# Scratch scripts
+scratch_*.py
+analyze.py
+fix_rom.py

@@ -4,7 +4,7 @@
     `include "cmp_tree.v"
 	`include "sgn_ram.v"
 `endif
-module cnu(en, active, clk, rst, q, r, syn, rsgn_out);
+module cnu(en, active, clk, rst, q, r, syn, offset_val, rsgn_out);
 parameter D=8;
 parameter res_w = 8;
 parameter ext_w = 1;
@@ -14,6 +14,7 @@ localparam  data_w = res_w + ext_w;
 input	clk, rst, en, active;
 input [data_w*D-1:0] q;
 input syn;
+input [2:0] offset_val;
 output [res_w*D-1:0] r;
 output rsgn_out;
 
@@ -56,9 +57,9 @@ sgn_ram #(.D(D)) SRAM(
 
   assign tmin = active ? {2'b0, min} : 0;
   assign tmin2 = active ? {2'b0, min2} : 0;
-// Offset Min-Sum: subtract beta=2, clamp to 0
-wire signed [data_w+1:0] tmin_scaled = ($signed(tmin) > 2) ? ($signed(tmin) - 2) : 0;
-wire signed [data_w+1:0] tmin2_scaled = ($signed(tmin2) > 2) ? ($signed(tmin2) - 2) : 0;
+// Offset Min-Sum: subtract dynamic offset, clamp to 0
+wire signed [data_w+1:0] tmin_scaled = ($signed(tmin) > offset_val) ? ($signed(tmin) - offset_val) : 0;
+wire signed [data_w+1:0] tmin2_scaled = ($signed(tmin2) > offset_val) ? ($signed(tmin2) - offset_val) : 0;
 
 generate
 for(i=0; i<D; i=i+1) begin :calc_r

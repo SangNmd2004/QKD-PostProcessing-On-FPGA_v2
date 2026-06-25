@@ -7,7 +7,8 @@ module core_partially_parallel #(
     parameter D_cnu = 15, 
     parameter ext_w = 1,
     parameter res_w = 8,
-    parameter shift_w = 7
+    parameter shift_w = 7,
+    parameter MAX_ITER = 32
 )(
     input  clk,
     input  rst,
@@ -115,13 +116,19 @@ module core_partially_parallel #(
     
     wire [Zc-1:0] parity_vector;
     
+    // Adaptive Offset Min-Sum (AOMS) logic
+    // Phase 1 (iter 0-24): Standard offset=2, preserves convergence for good blocks
+    // Phase 2 (iter 25-49): Reduced offset=1, boosts C2V correction power to break trapping sets
+    wire [2:0] dynamic_offset = (iter_count < 25) ? 3'd2 : 3'd1;
+    
     wire [Zc*res_w*D_cnu-1:0] cnu_r_out;
     cnu_cluster #(.Zc(Zc), .D(D_cnu), .res_w(res_w), .ext_w(ext_w), .idx_w(4)) u_cnu_cluster (
         .clk(clk), .rst(rst), .en(1'b1), .active(1'b1),
         .syn_in(current_layer_syn), 
         .q_in(q_in_buffer_flat), 
         .r_out(cnu_r_out),
-        .parity_vector(parity_vector)
+        .parity_vector(parity_vector),
+        .offset_val(dynamic_offset)
     );
 
     wire [shift_w-1:0] shift_val;
@@ -206,8 +213,19 @@ module core_partially_parallel #(
         end
     endgenerate
 
+    // Extract the signs of the NEW shifted LLRs to compute Hard-Decision Parity Check
+    wire [Zc-1:0] new_llr_shifted_signs;
+    genvar g_sign;
+    generate
+        for(g_sign=0; g_sign<Zc; g_sign=g_sign+1) begin : extract_signs
+            // The sign bit is at index res_w+ext_w-1
+            assign new_llr_shifted_signs[g_sign] = llr_new_shifted_array[g_sign*(res_w+ext_w) + (res_w+ext_w-1)];
+        end
+    endgenerate
+
     integer i;
     reg all_layers_parity_ok;
+    reg [Zc-1:0] layer_parity_accum; // Hard-Decision Parity accumulator
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             state <= IDLE;
@@ -216,6 +234,7 @@ module core_partially_parallel #(
             block_count <= 0; layer_count <= 0; col_count <= 0;
             calc_delay <= 0; valid_degree_count <= 0; write_degree_count <= 0;
             all_layers_parity_ok <= 1'b1;
+            layer_parity_accum <= 0;
             ldpc_res_out <= 0;
         end else begin
             state <= next_state;
@@ -223,7 +242,7 @@ module core_partially_parallel #(
             case (state)
                 IDLE: begin
                     block_count <= 0; layer_count <= 0; iter_count <= 0; col_count <= 0;
-                    done <= 1'b0;
+                    done <= 1'b0; layer_parity_accum <= 0;
                     if (start) begin
                         ir_success <= 1'b0; ir_fail_intr <= 1'b0;
                         current_code_rate <= code_rate;
@@ -262,15 +281,15 @@ module core_partially_parallel #(
                 end
                 LAYER_CALC: begin
                     calc_delay <= calc_delay + 1;
-                    if (calc_delay == 1) begin
-                        if (|parity_vector) all_layers_parity_ok <= 1'b0;
-                    end
+                    // Removed V2C-based parity check here as it causes false 'Oscillation' failures.
+                    // The parity is now checked using hard decisions during LAYER_WRITE.
                     if (calc_delay == 5) calc_delay <= 0;
                 end
                 LAYER_WRITE: begin
                     if (col_count == 0) begin
                         write_degree_count <= 0;
                         for(i=0; i<D_cnu; i=i+1) c2v_new_buffer[i] <= 0;
+                        layer_parity_accum <= 0;
                     end
                     
                     llr_we <= 1'b0; c2v_we <= 1'b0;
@@ -287,12 +306,18 @@ module core_partially_parallel #(
                         
                         c2v_new_buffer[write_degree_count] <= c2v_new_unshifted_sat;
                         write_degree_count <= write_degree_count + 1;
+                        
+                        // Accumulate Hard-Decision Parity (XOR sum)
+                        layer_parity_accum <= layer_parity_accum ^ new_llr_shifted_signs;
                     end
                     if (col_count == 26) begin
                         col_count <= 0;
                         c2v_we <= 1'b1;
                         c2v_addr_w <= layer_count;
                         c2v_din <= c2v_new_buffer_flat;
+                        
+                        // Check if the accumulated parity matches the syndrome for this layer
+                        if (layer_parity_accum != current_layer_syn) all_layers_parity_ok <= 1'b0;
                         
                         layer_count <= layer_count + 1;
                         if (layer_count == max_layer) begin
@@ -305,7 +330,7 @@ module core_partially_parallel #(
                     if (all_layers_parity_ok) ir_success <= 1'b1; else ir_fail_intr <= 1'b1;
                     block_count <= 0;
                     col_count <= 0;
-                    llr_addr_r <= 0; // Pre-load RAM[0] so OUTPUT_RES has it ready
+                    llr_addr_r <= 0;
                 end 
                 WAIT_FOR_EXTENSION: begin
                     if (resume_decoding) begin
@@ -341,7 +366,7 @@ module core_partially_parallel #(
             LAYER_CALC: if (calc_delay == 5) next_state = LAYER_WRITE;
             LAYER_WRITE: begin
                 if (col_count == 26) begin
-                    if (layer_count == max_layer && (iter_count >= 100 || all_layers_parity_ok)) next_state = CHECK;
+                    if (layer_count == max_layer && (iter_count >= MAX_ITER - 1 || all_layers_parity_ok)) next_state = CHECK;
                     else next_state = LAYER_READ;
                 end
             end

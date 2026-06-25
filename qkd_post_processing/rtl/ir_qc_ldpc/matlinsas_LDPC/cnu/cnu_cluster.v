@@ -14,7 +14,8 @@ module cnu_cluster #(
     input  [Zc-1:0] syn_in,
     input  [Zc*(res_w+ext_w)*D-1:0] q_in,    // VNU to CNU messages
     output [Zc*res_w*D-1:0] r_out,           // CNU to VNU messages
-    output [Zc-1:0] parity_vector
+    output [Zc-1:0] parity_vector,
+    input  [2:0] offset_val
 );
 
     wire [Zc*D*(res_w+ext_w)-1:0] q_in_reordered;
@@ -49,6 +50,7 @@ module cnu_cluster #(
                 .rst(rst),
                 .q(q_in_reordered[i*D*(res_w+ext_w) +: (res_w+ext_w)*D]),
                 .syn(syn_in[i]),
+                .offset_val(offset_val),
                 .r(r_out_reordered[i*res_w*D +: res_w*D]),
                 .rsgn_out(parity_vector[i])
             );
