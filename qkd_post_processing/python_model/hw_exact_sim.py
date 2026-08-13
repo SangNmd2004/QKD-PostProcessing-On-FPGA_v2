@@ -11,17 +11,17 @@ DATA_DIR = os.path.join(SCRIPT_DIR, '../data')
 
 # --- Parameters matching RTL ---
 Zc = 96
-data_w = 6      # LLR width
+data_w = 8      # LLR width
 res_w = 8        # C2V message width
-ext_w = 3        # Extension width for V2C (res_w + ext_w = 11 bits signed)
+ext_w = 2        # Extension width for V2C
 D_cnu = 8        # Max degree of check node
 NUM_LAYERS = 12
 NUM_COLS = 24
-MAX_ITER = 100
+MAX_ITER = 50
 
 # Signed range for data_w bits
-LLR_MAX = (1 << (data_w - 1)) - 1   # 31
-LLR_MIN = -(1 << (data_w - 1))      # -32
+LLR_MAX = (1 << (data_w - 1)) - 1   # 127
+LLR_MIN = -(1 << (data_w - 1))      # -128
 
 # Signed range for res_w bits (C2V messages)
 C2V_MAX = (1 << (res_w - 1)) - 1    # 127
@@ -81,7 +81,7 @@ def inv_barrel_shift(data_array, shift_amt, Zc=96):
         return data_array.copy()
     return barrel_shift(data_array, Zc - shift_amt, Zc)
 
-def cnu_process(q_in_D, syn_bit):
+def cnu_process(q_in_D, syn_bit, iteration):
     """
     Exact replication of cnu.v + sgn_ram.v + cmp_tree.v + abs.v
     
@@ -125,9 +125,10 @@ def cnu_process(q_in_D, syn_bit):
     tmin = min_adj
     tmin2 = min2_adj
     
-    # OMS offset=2
-    tmin_scaled = max(0, tmin - 2)
-    tmin2_scaled = max(0, tmin2 - 2)
+    # Adaptive OMS offset
+    offset_val = 2 if iteration < 25 else 1
+    tmin_scaled = max(0, tmin - offset_val)
+    tmin2_scaled = max(0, tmin2 - offset_val)
     
     # Generate C2V messages
     r_out = np.zeros(D, dtype=int)
@@ -157,9 +158,9 @@ def load_test_data():
     llrs = np.zeros(2304, dtype=int)
     for i, line in enumerate(llr_lines[:2304]):
         val = int(line, 2)
-        # Convert from unsigned 6-bit to signed
-        if val >= (1 << 5):
-            val -= (1 << 6)
+        # Convert from unsigned 8-bit to signed
+        if val >= (1 << 7):
+            val -= (1 << 8)
         llrs[i] = val
     
     # Load syndrome (1-bit binary per line)
@@ -249,7 +250,7 @@ def simulate():
                 for d in range(D_cnu):
                     q_in_D[d] = q_in_buffer[d][z]
                 
-                r_out_D, rsgn = cnu_process(q_in_D, syn_2d[layer][z])
+                r_out_D, rsgn = cnu_process(q_in_D, syn_2d[layer][z], iteration)
                 
                 for d in range(D_cnu):
                     cnu_r_out[d][z] = r_out_D[d]

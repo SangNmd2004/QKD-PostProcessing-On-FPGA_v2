@@ -12,8 +12,8 @@ from qkd_ldpc_sim import load_parity_check_matrix, quantize_llr
 
 N = 2304
 K = 1152
-NUM_BLOCKS = 8 # S' lAE°á»£ng block cáº§n thiáº¿t cho Vivado simulation (testbench = 2 blocks)
-REQUIRED_BITS = N * NUM_BLOCKS
+NUM_BLOCKS = 6 # Số lượng block cần thiết cho Vivado simulation
+MAX_ERRORS = int(0.06 * N) # Giới hạn < 6% QBER
 
 def generate_from_csv():
     csv_file = os.path.join(os.path.dirname(__file__), '../../bb84_key_test_Sim_20260618_002028.csv')
@@ -22,41 +22,50 @@ def generate_from_csv():
     
     alice_bits = ""
     bob_bits = ""
-    qber_sum = 0
-    qber_count = 0
     
+    # Đọc TOÀN BỘ CSV vào string
     for index, row in df.iterrows():
-        if index < 20:
-            continue
-            
-        a_bits = str(row['key_alice'])
-        b_bits = str(row['key_bob'])
+        alice_bits += str(row['key_alice'])
+        bob_bits += str(row['key_bob'])
         
-        alice_bits += a_bits
-        bob_bits += b_bits
-        qber_val = float(row['QBER_eff_pct']) if 'QBER_eff_pct' in row else float(row['QBER_pct'])
-        qber_sum += qber_val
-        qber_count += 1
+    alice_arr_full = np.array([int(b) for b in alice_bits])
+    bob_arr_full = np.array([int(b) for b in bob_bits])
+    
+    total_possible_blocks = len(alice_bits) // N
+    
+    selected_alice_blocks = []
+    selected_bob_blocks = []
+    
+    SKIP_VALID_BLOCKS = 3
+    valid_blocks_found = 0
+    
+    print(f"Searching for {NUM_BLOCKS} blocks with QBER < 6% (Max Errors = {MAX_ERRORS})...")
+    
+    for b in range(total_possible_blocks):
+        alice_blk = alice_arr_full[b*N : (b+1)*N]
+        bob_blk = bob_arr_full[b*N : (b+1)*N]
         
-        if len(alice_bits) >= REQUIRED_BITS:
-            break
+        mismatch = np.sum(alice_blk != bob_blk)
+        qber = mismatch / N * 100
+        
+        if mismatch <= MAX_ERRORS and mismatch > 0: # Không lấy block có 0 lỗi
+            valid_blocks_found += 1
+            if valid_blocks_found <= SKIP_VALID_BLOCKS:
+                continue
+                
+            print(f"  -> Selected Candidate Block {b}: {mismatch} errors ({qber:.2f}%)")
+            selected_alice_blocks.append(alice_blk)
+            selected_bob_blocks.append(bob_blk)
             
-    if len(alice_bits) < REQUIRED_BITS:
-        print(f"Error: CSV file only has {len(alice_bits)} bits, need {REQUIRED_BITS} bits.")
+            if len(selected_alice_blocks) == NUM_BLOCKS:
+                break
+                
+    if len(selected_alice_blocks) < NUM_BLOCKS:
+        print(f"Error: Could not find {NUM_BLOCKS} blocks satisfying the criteria. Only found {len(selected_alice_blocks)}.")
         return
         
-    alice_bits = alice_bits[:REQUIRED_BITS]
-    bob_bits = bob_bits[:REQUIRED_BITS]
-    avg_qber = (qber_sum / qber_count) / 100.0 # Convert % to decimal
-    
-    print(f"Extracted {REQUIRED_BITS} bits. Average QBER: {avg_qber*100:.2f}%")
-    
-    # Generate data
-    alice_arr = np.array([int(b) for b in alice_bits])
-    bob_arr = np.array([int(b) for b in bob_bits])
-    
-    actual_errors = np.sum(alice_arr != bob_arr)
-    print(f"Number of ACTUAL mismatch bits in Bob's key: {actual_errors}")
+    alice_arr = np.concatenate(selected_alice_blocks)
+    bob_arr = np.concatenate(selected_bob_blocks)
     
     H = load_parity_check_matrix(rate="1/2")
     
@@ -67,16 +76,15 @@ def generate_from_csv():
         llr_bytes = []
         syn_bytes = []
         
-        for b in range(6): # Test Blocks 0 to 5 from CSV
-            alice_blk = alice_arr[b*N : (b+1)*N]
-            bob_blk = bob_arr[b*N : (b+1)*N]
+        for b in range(NUM_BLOCKS):
+            alice_blk = selected_alice_blocks[b]
+            bob_blk = selected_bob_blocks[b]
             
             actual_mismatch = np.sum(alice_blk != bob_blk)
-            print(f"Block {b}: ACTUAL mismatch bits from CSV: {actual_mismatch}")
+            print(f"Block {b}: ACTUAL mismatch bits to simulate: {actual_mismatch}")
             
-            # TÍNH LLR CHUẨN CHO FIXED-POINT LDPC (Tránh bão hòa sớm)
-            # Thay đổi LLR mag để phù hợp với hardware Offset Min-Sum (beta=2)
-            llr_mag = 1.75
+            # TÍNH LLR CHUẨN CHO FIXED-POINT LDPC
+            llr_mag = 2.7
             
             llr = np.zeros(N)
             for i in range(N):
@@ -85,26 +93,19 @@ def generate_from_csv():
                 else:
                     llr[i] = -llr_mag
                     
-            llr_q = quantize_llr(llr, w=6, frac=2)
-            # Pack 6-bit LLRs into binary string (1 LLR per line, 2304 lines total)
+            llr_q = quantize_llr(llr, w=8, frac=2)
             for val in llr_q:
-                # Convert signed 6-bit to binary string
-                bin_str = format(val & 0x3F, '06b')
+                bin_str = format(val & 0xFF, '08b')
                 f_llr.write(f"{bin_str}\n")
-                
-                # Pack bytes for C header
                 llr_bytes.append(val & 0xFF)
                 
-            # TÍNH Syndrome cho Alice
             syn = np.dot(H, alice_blk) % 2
             
-            # Pad syndrome to exactly 1152 bits (12 blocks) to match tb_system_top.v memory size
             if len(syn) < 1152:
                 syn_padded = np.pad(syn, (0, 1152 - len(syn)), 'constant')
             else:
                 syn_padded = syn[:1152]
             
-            # Pack 8 bits of syndrome into 1 byte (LSB first to match FPGA AXI-to-Parallel)
             for i in range(0, len(syn_padded), 8):
                 byte_val = 0
                 for bit in range(8):
@@ -115,7 +116,6 @@ def generate_from_csv():
             for val in syn_padded:
                 f_syn.write(f"{val}\n")
                 
-            # Káº¿t quáº£ kÃ¬ vá» ng (Expected) phi lÃ  khÃ³a gá»‘c cá»§a Alice (khÃ´ng lá»—i)
             for val in alice_blk:
                 f_exp.write(f"{val}\n")
                 
@@ -124,20 +124,17 @@ def generate_from_csv():
     syn_size = len(syn_bytes)
     out_file = os.path.join(SCRIPT_DIR, '../../vitis_src/test_data.h')
     with open(out_file, "w") as f:
-        f.write("/*\n * AUTO-GENERATED TEST VECTORS FROM CSV FSO DATA\n")
-        f.write(f" * QBER: 1.0%\n")
+        f.write("/*\n * AUTO-GENERATED TEST VECTORS FROM CSV FSO DATA (QBER < 6%)\n")
         f.write(" */\n\n")
         f.write("#ifndef TEST_DATA_H\n")
         f.write("#define TEST_DATA_H\n\n")
         f.write(f"#define LLR_ARRAY_SIZE {llr_size}\n")
         f.write(f"#define SYN_ARRAY_SIZE {syn_size}\n\n")
-        f.write("// Real LLR data derived from Bob's Sifted Key\n")
         f.write("unsigned char llr_data[LLR_ARRAY_SIZE] = {\n")
         for i, b in enumerate(llr_bytes):
             f.write(f"0x{b:02X}, ")
             if (i+1) % 16 == 0: f.write("\n")
         f.write("};\n\n")
-        f.write("// Real Syndrome data derived from Alice's Raw Key\n")
         f.write("unsigned char syn_data[SYN_ARRAY_SIZE] = {\n")
         for i, b in enumerate(syn_bytes):
             f.write(f"0x{b:02X}, ")
@@ -146,7 +143,6 @@ def generate_from_csv():
         f.write("#endif // TEST_DATA_H\n")
                 
     print("Successfully generated llr_in.txt, syndrome_in.txt, and expected_out.txt from FSO CSV data!")
-    print(f"Successfully generated C header: {out_file}")
 
 if __name__ == "__main__":
     generate_from_csv()

@@ -32,6 +32,8 @@ module qkd_post_processing_top #(
     input  wire puncture_en,     // PS cấu hình mạch đục lỗ (Puncturing)
     
     // Trạng thái hệ thống
+    input  wire hash_ok,
+    input  wire hash_fail,
     output wire ir_success,
     output wire [5:0] ldpc_iters_out,
     output wire pa_active
@@ -99,23 +101,28 @@ module qkd_post_processing_top #(
     wire [LDPC_BLOCK-1:0] ldpc_res;
     wire ldpc_done;
 
-    wire [10*LDPC_BLOCK-1:0] ldpc_l_buffer_ext;
+    wire [12*LDPC_BLOCK-1:0] ldpc_l_buffer_ext;
     genvar gi_llr;
     generate
-        for(gi_llr=0; gi_llr<LDPC_BLOCK; gi_llr=gi_llr+1) begin : gen_llr_ext
+        // Split the generate loop into two to bypass Gowin EDA's 2000 loop iteration limit
+        for(gi_llr=0; gi_llr<1200; gi_llr=gi_llr+1) begin : gen_llr_ext_0
             wire [LLR_W-1:0] val = ldpc_l_buffer[gi_llr*LLR_W +: LLR_W];
-            assign ldpc_l_buffer_ext[gi_llr*10 +: 10] = {{ (10-LLR_W){val[LLR_W-1]} }, val};
+            assign ldpc_l_buffer_ext[gi_llr*12 +: 12] = {{ (12-LLR_W){val[LLR_W-1]} }, val};
+        end
+        for(gi_llr=1200; gi_llr<LDPC_BLOCK; gi_llr=gi_llr+1) begin : gen_llr_ext_1
+            wire [LLR_W-1:0] val = ldpc_l_buffer[gi_llr*LLR_W +: LLR_W];
+            assign ldpc_l_buffer_ext[gi_llr*12 +: 12] = {{ (12-LLR_W){val[LLR_W-1]} }, val};
         end
     endgenerate
 
-    // Sử dụng kiến trúc tiết kiệm tài nguyên mới nhất hỗ trợ Blind Reconciliation
+    // Sử dụng kiến trúc tối ưu cho Gowin 138K Pro (Siêu phân giải)
     core_partially_parallel #(
         .Zc(96),
-        .data_w(10), // Increased internal LLR width to 10-bits to avoid early saturation
+        .data_w(12), // LLR 12-bit
         .D_vnu(12),
-        .D_cnu(15), // Mở rộng lên 15 để hỗ trợ Rate 3/4B
-        .ext_w(3), // V2C width = res_w + ext_w = 8 + 3 = 11 bits (prevents overflow during 511 - (-128))
-        .res_w(8), // Restored to 8-bit C2V messages
+        .D_cnu(15), 
+        .ext_w(2),   // V2C width = res_w (12) + ext_w (2) = 14 bits
+        .res_w(12),  // C2V 12-bit
         .shift_w(7),
         .MAX_ITER(50)
     ) u_ldpc_core (
@@ -131,6 +138,8 @@ module qkd_post_processing_top #(
         .iter_out(ldpc_iters_out),
         .puncture_en(puncture_en),
         .resume_decoding(resume_decoding),
+        .hash_ok(hash_ok),
+        .hash_fail(hash_fail),
         .ldpc_res_out(ldpc_res)
     );
 

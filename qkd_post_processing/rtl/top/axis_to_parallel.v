@@ -32,13 +32,28 @@ module axis_to_parallel #(
     // Flatten mang 2D thanh mảng 1D cho p_data_out
     genvar gi;
     generate
-        for(gi=0; gi<NUM_CHUNKS; gi=gi+1) begin : flatten_out
-            if (gi == NUM_CHUNKS - 1) begin
-                // Chunk cuoi cung co the khong rong bang DATA_W (padding)
-                localparam REMAINING_BITS = BLOCK_BITS - (NUM_CHUNKS - 1) * DATA_W;
-                assign p_data_out[gi*DATA_W +: REMAINING_BITS] = out_reg[gi][REMAINING_BITS-1:0];
-            end else begin
+        if (NUM_CHUNKS > 1500) begin
+            for(gi=0; gi<1500; gi=gi+1) begin : flatten_out_0
                 assign p_data_out[gi*DATA_W +: DATA_W] = out_reg[gi];
+            end
+            for(gi=1500; gi<NUM_CHUNKS; gi=gi+1) begin : flatten_out_1
+                if (gi == NUM_CHUNKS - 1) begin
+                    // Chunk cuoi cung co the khong rong bang DATA_W (padding)
+                    localparam REMAINING_BITS = BLOCK_BITS - (NUM_CHUNKS - 1) * DATA_W;
+                    assign p_data_out[gi*DATA_W +: REMAINING_BITS] = out_reg[gi][REMAINING_BITS-1:0];
+                end else begin
+                    assign p_data_out[gi*DATA_W +: DATA_W] = out_reg[gi];
+                end
+            end
+        end else begin
+            for(gi=0; gi<NUM_CHUNKS; gi=gi+1) begin : flatten_out
+                if (gi == NUM_CHUNKS - 1) begin
+                    // Chunk cuoi cung co the khong rong bang DATA_W (padding)
+                    localparam REMAINING_BITS = BLOCK_BITS - (NUM_CHUNKS - 1) * DATA_W;
+                    assign p_data_out[gi*DATA_W +: REMAINING_BITS] = out_reg[gi][REMAINING_BITS-1:0];
+                end else begin
+                    assign p_data_out[gi*DATA_W +: DATA_W] = out_reg[gi];
+                end
             end
         end
     endgenerate
@@ -49,9 +64,20 @@ module axis_to_parallel #(
         if (rst) begin
             chunk_count <= 0;
             p_valid_out <= 0;
-            for(i=0; i<NUM_CHUNKS; i=i+1) begin
-                shift_reg[i] <= 0;
-                out_reg[i] <= 0;
+            if (NUM_CHUNKS > 1500) begin
+                for(i=0; i<1500; i=i+1) begin
+                    shift_reg[i] <= 0;
+                    out_reg[i] <= 0;
+                end
+                for(i=1500; i<NUM_CHUNKS; i=i+1) begin
+                    shift_reg[i] <= 0;
+                    out_reg[i] <= 0;
+                end
+            end else begin
+                for(i=0; i<NUM_CHUNKS; i=i+1) begin
+                    shift_reg[i] <= 0;
+                    out_reg[i] <= 0;
+                end
             end
         end else begin
             if (p_valid_out && p_ready_in) begin
@@ -68,7 +94,12 @@ module axis_to_parallel #(
                     chunk_count <= chunk_count + 1;
                     
                     if (chunk_count == NUM_CHUNKS - 1) begin
-                        for(i=0; i<NUM_CHUNKS-1; i=i+1) out_reg[i] <= shift_reg[i];
+                        if (NUM_CHUNKS > 1500) begin
+                            for(i=0; i<1500; i=i+1) out_reg[i] <= shift_reg[i];
+                            for(i=1500; i<NUM_CHUNKS-1; i=i+1) out_reg[i] <= shift_reg[i];
+                        end else begin
+                            for(i=0; i<NUM_CHUNKS-1; i=i+1) out_reg[i] <= shift_reg[i];
+                        end
                         out_reg[NUM_CHUNKS-1] <= s_axis_tdata;
                         p_valid_out <= 1;
                     end

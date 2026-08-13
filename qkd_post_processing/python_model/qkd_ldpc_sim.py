@@ -13,7 +13,7 @@ N = Z * R  # Chiều dài codeword (2.54)
 K = N - (Z * C) # Chiều dài bản tin (1152)
 
 # LLR Quantization: data_w = 6 bit, Q(6,2) = 1 sign bit, 3 integer, 2 fraction
-def quantize_llr(llr, w=6, frac=2):
+def quantize_llr(llr, w=8, frac=2):
     max_val = (2**(w-1)) - 1
     min_val = -(2**(w-1))
     
@@ -93,7 +93,7 @@ def generate_test_vector(qber=0.05, code_rate='1/2'):
     alice_key = np.random.randint(0, 2, N)
     
     # 2. Tính Syndrome S = H * Alice_Key
-    H = load_parity_check_matrix()
+    H = load_parity_check_matrix(rate=code_rate)
     syndrome = np.dot(H, alice_key) % 2
     
     # Áp dụng Optimal Puncturing/Disabling theo Code Rate (Grouping and Sorting pattern)
@@ -114,15 +114,15 @@ def generate_test_vector(qber=0.05, code_rate='1/2'):
     error_mask = np.random.rand(N) < qber
     sifted_key = alice_key ^ error_mask
     
-    # 4. BPSK mapping cho Bob's LLR (0 -> +1.75, 1 -> -1.75)
-    llrs_float = np.where(sifted_key == 0, 1.75, -1.75)
+    # 4. BPSK mapping cho Bob's LLR (0 -> +4.6, 1 -> -4.6)
+    llrs_float = np.where(sifted_key == 0, 4.6, -4.6)
     llrs_quant = quantize_llr(llrs_float)
     
     # 5. Lưu dữ liệu cho Testbench
     # Lưu LLR
     with open(os.path.join(DATA_DIR, 'llr_in.txt'), 'w') as f:
         for val in llrs_quant:
-            f.write(f"{val:06b}\n")
+            f.write(f"{val:08b}\n")
             
     # Lưu Syndrome
     with open(os.path.join(DATA_DIR, 'syndrome_in.txt'), 'w') as f:

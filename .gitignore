@@ -54,3 +54,6 @@ qkd_fso-main/
 scratch_*.py
 analyze.py
 fix_rom.py
+xsim.dir/
+xvlog.pb
+xelab.pb

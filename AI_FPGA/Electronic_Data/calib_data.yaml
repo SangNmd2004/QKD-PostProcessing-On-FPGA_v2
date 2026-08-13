@@ -1,0 +1,14 @@
+names:
+  0: Button
+  1: Capacitor
+  2: IC
+  3: Led
+  4: Pot
+  5: Resistor
+  6: Sensor
+  7: Transistor
+nc: 8
+path: C:\Users\Admin\Downloads\AI_FPGA\Electronic_Data\calibration_images
+test: .
+train: .
+val: .
