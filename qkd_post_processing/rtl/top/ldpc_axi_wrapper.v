@@ -110,9 +110,38 @@ module ldpc_axi_wrapper (
 
     wire ir_success;
     wire ir_fail_intr;
-    wire [7:0] ldpc_iters_out;
+    wire discard_flag;
+    wire [5:0] ldpc_iters_out_raw;
+    wire [7:0] ldpc_iters_out = {2'b00, ldpc_iters_out_raw};
     
-    assign stat_reg = {16'b0, ldpc_iters_out, 6'b0, ir_fail_intr, ir_success};
+    // STAT_REG bit map:
+    // [0] ir_success
+    // [1] ir_fail_intr
+    // [2] discard_flag
+    // [15:8] ldpc_iters_out
+    
+    // Lưu ý: ir_success và ir_fail_intr từ LDPC core chỉ là xung (pulse) 1 chu kỳ.
+    // Để CPU đọc được qua AXI, chúng ta cần latch (giữ) các cờ này lại.
+    reg stat_ir_success_latch;
+    reg stat_ir_fail_latch;
+    
+    always @(posedge s_axi_aclk) begin
+        if (!s_axi_aresetn) begin
+            stat_ir_success_latch <= 0;
+            stat_ir_fail_latch <= 0;
+        end else begin
+            if (ir_success) stat_ir_success_latch <= 1;
+            if (ir_fail_intr) stat_ir_fail_latch <= 1;
+            
+            // Xóa cờ khi CPU GHI vào STAT_REG (clear on write)
+            if (s_axi_awvalid && s_axi_awready && s_axi_wvalid && s_axi_wready && s_axi_awaddr[7:0] == 8'h04) begin
+                if (s_axi_wdata[0]) stat_ir_success_latch <= 0;
+                if (s_axi_wdata[1]) stat_ir_fail_latch <= 0;
+            end
+        end
+    end
+    
+    assign stat_reg = {16'b0, ldpc_iters_out, 5'b0, discard_flag, stat_ir_fail_latch, stat_ir_success_latch};
     
     assign ldpc_ir_success_intr = ir_success;
     assign ldpc_ir_fail_intr    = ir_fail_intr;
@@ -142,7 +171,7 @@ module ldpc_axi_wrapper (
         .clk(s_axi_aclk),
         .rst(~s_axi_aresetn),
         
-        .code_rate(ctrl_reg[1:0]),
+        .code_rate(ctrl_reg[1:0]), // This code_rate is now ignored by LDPC core because of hardware prediction, but kept for legacy AXI structure
         .resume_decoding(pulse_resume),
         .hash_ok(pulse_hash_ok),
         .hash_fail(pulse_hash_fail),
@@ -150,7 +179,9 @@ module ldpc_axi_wrapper (
         
         .ir_success(ir_success),
         .ir_fail_intr(ir_fail_intr),
-        .ldpc_iters_out(ldpc_iters_out),
+        .discard_flag(discard_flag),
+        .ldpc_iters_out(ldpc_iters_out_raw),
+        .pa_active(),
         
         // DMA AXI-Stream Ports
         .s_axis_llr_tdata(s_axis_llr_tdata),

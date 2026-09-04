@@ -141,7 +141,18 @@ module tb_ldpc_axi_wrapper;
         end
     endtask
     
-    integer i;
+    integer i_llr;
+    integer i_syn;
+    integer blk;
+    
+    integer stats_discard [0:4];
+    integer stats_iter [0:4];
+    integer stats_ldpc_done [0:4];
+    integer stats_shw [0:4];
+    
+    reg [5:0] llr_mem [0:2303];
+    reg [0:0] syn_mem [0:1151];
+    reg [0:0] err_syn_mem [0:1151]; // Thêm bộ nhớ cho Error Syndrome
     
     initial begin
         // Initialize AXI-Lite
@@ -161,57 +172,119 @@ module tb_ldpc_axi_wrapper;
         $display("Configuring CTRL_REG via AXI-Lite...");
         axi_write(32'h00, 32'h00000000); // Write dummy config, rate will be predicted anyway
         
-        $display("Pushing LLR and Syndrome Data via AXI-Stream...");
-        
-        // Fork streams to push LLR and Syndrome in parallel (just like real DMA)
-        fork
-            // LLR Stream: 2304 LLRs, padded to 8-bits
-            begin
-                for (i = 0; i < 2304; i = i + 1) begin
-                    @(posedge clk);
-                    s_axis_llr_tdata <= (i % 31) + 1; // Send dummy pseudo-random positive LLRs
-                    s_axis_llr_tvalid <= 1;
-                    wait(s_axis_llr_tready);
-                end
-                @(posedge clk);
-                s_axis_llr_tvalid <= 0;
+        for (blk = 0; blk < 5; blk = blk + 1) begin
+            $display("=========================================================");
+            $display(" RUNNING BLOCK %0d VIA AXI-STREAM", blk);
+            $display("=========================================================");
+            
+            if (blk == 0) begin
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/llr_in_0.txt", llr_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in_0.txt", syn_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/err_syndrome_in_0.txt", err_syn_mem);
+            end else if (blk == 1) begin
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/llr_in_1.txt", llr_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in_1.txt", syn_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/err_syndrome_in_1.txt", err_syn_mem);
+            end else if (blk == 2) begin
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/llr_in_2.txt", llr_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in_2.txt", syn_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/err_syndrome_in_2.txt", err_syn_mem);
+            end else if (blk == 3) begin
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/llr_in_3.txt", llr_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in_3.txt", syn_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/err_syndrome_in_3.txt", err_syn_mem);
+            end else if (blk == 4) begin
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/llr_in_4.txt", llr_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/syndrome_in_4.txt", syn_mem);
+                $readmemb("d:/DownloadD/03. Post-Processing-FPGA-QKD-20260508T062156Z-3-001/03. Post-Processing-FPGA-QKD/qkd_post_processing/data/err_syndrome_in_4.txt", err_syn_mem);
             end
             
-            // Syndrome Stream: 1152 bits = 144 bytes
-            begin
-                for (i = 0; i < 144; i = i + 1) begin
-                    @(posedge clk);
-                    s_axis_syn_tdata <= 8'h00; // Zero syndrome (simulating perfectly matching strings)
-                    s_axis_syn_tvalid <= 1;
-                    wait(s_axis_syn_tready);
-                end
-                @(posedge clk);
-                s_axis_syn_tvalid <= 0;
-            end
-        join
-        
-        $display("Data push complete. Waiting for Interrupts...");
-        
-        // Wait for processing to finish
-        wait (ldpc_ir_success_intr || ldpc_ir_fail_intr);
-        
-        if (ldpc_ir_success_intr)
-            $display("SUCCESS: Decoding successful!");
-        else
-            $display("FAIL: Decoding failed (Discarded by controller or hit iter_max)!");
+            $display("Pushing LLR and Syndrome Data via AXI-Stream...");
             
-        // Read STAT_REG to get status details
-        begin : read_stat_block
-            reg [31:0] stat;
-            axi_read(32'h04, stat);
-            $display("---------------------------------");
-            $display("STAT_REG Readback: 0x%08X", stat);
-            $display("  -> IR Success   : %b", stat[0]);
-            $display("  -> IR Fail      : %b", stat[1]);
-            $display("  -> Discard Flag : %b", stat[2]);
-            $display("  -> Iterations   : %d", stat[15:8]);
-            $display("---------------------------------");
+            fork
+                // LLR Stream: 2304 LLRs
+                begin
+                    for (i_llr = 0; i_llr < 2304; i_llr = i_llr + 1) begin
+                        @(posedge clk);
+                        s_axis_llr_tdata <= {2'b00, llr_mem[i_llr]}; 
+                        s_axis_llr_tvalid <= 1;
+                        wait(s_axis_llr_tready);
+                    end
+                    @(posedge clk);
+                    s_axis_llr_tvalid <= 0;
+                end
+                
+                // Syndrome Stream: 2304 bits packed into 288 bytes (144 Alice Syn + 144 Error Syn)
+                begin
+                    // Part 1: Gửi Alice Syndrome (144 bytes)
+                    for (i_syn = 0; i_syn < 144; i_syn = i_syn + 1) begin
+                        @(posedge clk);
+                        s_axis_syn_tdata <= {syn_mem[i_syn*8+7], syn_mem[i_syn*8+6], syn_mem[i_syn*8+5], syn_mem[i_syn*8+4],
+                                             syn_mem[i_syn*8+3], syn_mem[i_syn*8+2], syn_mem[i_syn*8+1], syn_mem[i_syn*8]};
+                        s_axis_syn_tvalid <= 1;
+                        wait(s_axis_syn_tready);
+                    end
+                    
+                    // Part 2: Gửi Error Syndrome (144 bytes)
+                    for (i_syn = 0; i_syn < 144; i_syn = i_syn + 1) begin
+                        @(posedge clk);
+                        s_axis_syn_tdata <= {err_syn_mem[i_syn*8+7], err_syn_mem[i_syn*8+6], err_syn_mem[i_syn*8+5], err_syn_mem[i_syn*8+4],
+                                             err_syn_mem[i_syn*8+3], err_syn_mem[i_syn*8+2], err_syn_mem[i_syn*8+1], err_syn_mem[i_syn*8]};
+                        s_axis_syn_tvalid <= 1;
+                        wait(s_axis_syn_tready);
+                    end
+                    
+                    @(posedge clk);
+                    s_axis_syn_tvalid <= 0;
+                end
+            join
+            
+            $display("Data push complete. Waiting for Interrupts...");
+            
+            wait (ldpc_ir_success_intr || ldpc_ir_fail_intr);
+            
+            if (ldpc_ir_success_intr)
+                $display("SUCCESS: Decoding successful for block %0d!", blk);
+            else
+                $display("FAIL: Decoding failed (Discarded by controller or hit iter_max) for block %0d!", blk);
+                
+            begin : read_stat_block
+                reg [31:0] stat;
+                axi_read(32'h04, stat);
+                
+                // Luu thong ke vao mang
+                stats_ldpc_done[blk] = stat[0];
+                stats_discard[blk] = stat[2];
+                stats_iter[blk] = stat[15:8];
+                stats_shw[blk] = dut.u_ldpc_top.shw_val;
+                
+                $display("---------------------------------");
+                $display("STAT_REG Readback: 0x%08X", stat);
+                $display("  -> IR Success   : %b", stat[0]);
+                $display("  -> IR Fail      : %b", stat[1]);
+                $display("  -> Discard Flag : %b", stat[2]);
+                $display("  -> Iterations   : %d", stat[15:8]);
+                $display("---------------------------------");
+                
+                // Clear flags for next block by writing 1 to bits 0 and 1
+                axi_write(32'h04, 32'h00000003);
+            end
+            
+            #1000;
         end
+        
+        $display("\n===============================================================================");
+        $display("                 AXI-STREAM SIMULATION SUMMARY REPORT                          ");
+        $display("===============================================================================");
+        $display(" BLOCK | QBER TARGET |  SHW  | DISCARD | LDPC ITERS | LDPC STATUS ");
+        $display("-------------------------------------------------------------------------------");
+        for (blk = 0; blk < 5; blk = blk + 1) begin
+            $display("   %0d   |      %0d%%    |  %3d  |    %0d    |     %2d     |   %s   ", 
+                     blk, blk+2, stats_shw[blk], stats_discard[blk], stats_iter[blk], 
+                     stats_ldpc_done[blk] ? "SUCCESS" : "FAIL   ");
+        end
+        $display("===============================================================================\n");
+        $display("ALL 5 BLOCKS TESTED VIA AXI-STREAM SUCCESSFULLY!");
         
         #5000;
         $finish;

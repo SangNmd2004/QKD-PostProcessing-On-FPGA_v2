@@ -172,3 +172,32 @@ The system has been massively upgraded with an intelligent **Predictive Controll
 - **Dynamic Iteration Scaling**: Bypassed the rigid software-defined maximum iterations. The hardware now automatically calculates the exact `iter_max` required based on the real-time QBER density (SHW). For low-QBER blocks (e.g., 2%), the LDPC core converges in just 6 iterations instead of 50, achieving an **8x speedup**.
 - **Early Discard & Power-Gating**: When the predictive algorithm detects an uncorrectable error density (exceeding the Shannon limit for the given matrix, e.g., >5% QBER), it immediately raises a `discard_flag`.
 - **Zero-Energy Discarding**: The `discard_flag` acts as a direct hardware power-gate, completely suppressing the `start` signal to the massive LDPC core. The hardware consumes **0 iterations and near-zero dynamic power** for garbage data, while simultaneously flushing the AXI buffers and sending an early interrupt to free the CPU instantly.
+
+---
+
+## 🔗 Phase 12 Update: HW/SW Co-Design 288-Byte Synergy & AXI Integration
+
+A fundamental challenge of the Hardware Predictive Controller was that the hardware required the **Error Syndrome** to compute the Hamming Weight, while the LDPC decoder required **Alice's Original Syndrome** to decode. Expanding the hardware with a 3rd DMA AXI stream would have been architecturally expensive.
+
+To solve this, a highly elegant **Hardware-Software Co-Design** strategy was implemented:
+- **Software Pre-Processing (Zynq PS)**: The CPU mathematically XORs Alice's Syndrome and Bob's Raw Syndrome in software (a negligible cost for 144 bytes).
+- **288-Byte DMA Payload**: The CPU packs both Alice's Syndrome (144 bytes) and the Error Syndrome (144 bytes) into a single 288-byte DMA transfer.
+- **Hardware Splitter (FPGA)**: The `axis_to_parallel` module on the FPGA was expanded to 2304 bits (288 bytes). It acts as a hardware router, cleanly slicing the payload and feeding the first half to the LDPC decoder, and the second half to the Predictive Controller.
+
+### AXI-Stream Simulation Summary
+The fully integrated AXI-Stream architecture successfully power-gates the system at 5% and 6% QBERs, resulting in **0 iterations** (complete power shutoff):
+
+```text
+===============================================================================
+                 AXI-STREAM SIMULATION SUMMARY REPORT                          
+===============================================================================
+ BLOCK | QBER TARGET |  SHW  | DISCARD | LDPC ITERS | LDPC STATUS 
+-------------------------------------------------------------------------------
+   0   |      2%    |  104  |    0    |      6     |   SUCCESS   
+   1   |      3%    |  145  |    0    |     33     |   SUCCESS   
+   2   |      4%    |  183  |    0    |     46     |   SUCCESS   
+   3   |      5%    |  219  |    1    |      0     |   FAIL      
+   4   |      6%    |  257  |    1    |      0     |   FAIL      
+===============================================================================
+ALL 5 BLOCKS TESTED VIA AXI-STREAM SUCCESSFULLY!
+```

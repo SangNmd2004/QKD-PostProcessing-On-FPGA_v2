@@ -7,12 +7,12 @@ module core_partially_parallel #(
     parameter D_cnu = 15, 
     parameter ext_w = 1,
     parameter res_w = 8,
-    parameter shift_w = 7,
-    parameter MAX_ITER = 32
+    parameter shift_w = 7
 )(
     input  clk,
     input  rst,
     input  start,
+    input  [7:0] iter_max_in,
     input  [1:0] code_rate, // 00: 1/2, 01: 2/3B, 10: 3/4B
     input  [1535:0] syn_in,
     input  [Zc*data_w*24-1:0] llr_in_array,
@@ -275,7 +275,7 @@ module core_partially_parallel #(
                     
                     llr_we <= 1'b0; c2v_we <= 1'b0;
                     if (col_count == 0) begin
-                        for(i=0; i<D_cnu; i=i+1) q_in_buffer[i] <= {Zc{DUMMY_Q_IN}};
+                        for(i=0; i<D_cnu; i=i+1) q_in_buffer[i] <= DUMMY_Q_IN;
                         valid_degree_count <= 0;
                     end
                     if (col_count < 26) begin
@@ -385,7 +385,7 @@ module core_partially_parallel #(
             LAYER_CALC: if (calc_delay == 5) next_state = LAYER_WRITE;
             LAYER_WRITE: begin
                 if (col_count == 26) begin
-                    if (layer_count == max_layer - 1 && (iter_count >= MAX_ITER - 1 || all_layers_parity_ok)) next_state = CHECK;
+                    if (layer_count == max_layer - 1 && (iter_count >= iter_max_in - 1 || all_layers_parity_ok)) next_state = CHECK;
                     else next_state = LAYER_READ;
                 end
             end

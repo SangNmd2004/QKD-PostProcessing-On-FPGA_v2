@@ -69,12 +69,14 @@ module qkd_post_processing_top #(
     // ==========================================
     // 2b. Syndrome AXI-Stream to Parallel
     // ==========================================
-    wire [1151:0] syndrome_buffer;
-    wire syn_start;
+    wire [2303:0] syndrome_buffer_full;
+    wire [1151:0] syndrome_buffer = syndrome_buffer_full[1151:0];      // 144 byte đầu tiên: Alice Syndrome
+    wire [1151:0] err_syndrome_buffer = syndrome_buffer_full[2303:1152]; // 144 byte tiếp theo: Error Syndrome
+    wire syn_start_raw;
     
     axis_to_parallel #(
         .DATA_W(8),
-        .BLOCK_BITS(1152)
+        .BLOCK_BITS(2304) // Nhận 144 byte Alice Syndrome + 144 byte Error Syndrome
     ) u_axis_to_parallel_syn (
         .clk(clk),
         .rst(rst),
@@ -83,10 +85,18 @@ module qkd_post_processing_top #(
         .s_axis_tready(s_axis_syn_tready),
         .s_axis_tlast(1'b0),
         
-        .p_data_out(syndrome_buffer),
-        .p_valid_out(syn_start),
+        .p_data_out(syndrome_buffer_full),
+        .p_valid_out(syn_start_raw),
         .p_ready_in(p_ready_sig)
     );
+
+    // Pipeline delay to wait for SHW calculation (takes ~4 cycles)
+    reg [4:0] syn_start_delay_reg;
+    always @(posedge clk) begin
+        if (rst) syn_start_delay_reg <= 0;
+        else syn_start_delay_reg <= {syn_start_delay_reg[3:0], syn_start_raw};
+    end
+    wire syn_start = syn_start_delay_reg[4];
 
     reg buffer_release_pulse;
     always @(posedge clk) begin
@@ -96,7 +106,7 @@ module qkd_post_processing_top #(
         end else begin
             buffer_release_pulse <= 0; // Mặc định xóa pulse
             
-            // Chỉ bắt đầu giải mã khi CẢ LLR và Syndrome đều đã được nạp đủ
+            // Chỉ bắt đầu giải mã khi CẢ LLR và Syndrome đều đã được nạp đủ (đã chờ SHW ổn định)
             if (ldpc_start && syn_start && !ldpc_en && !buffer_release_pulse) begin
                 if (discard_flag)
                     buffer_release_pulse <= 1; // Kích hoạt pulse vứt bỏ rác, giải phóng buffer, cắt điện LDPC
@@ -115,6 +125,16 @@ module qkd_post_processing_top #(
     // ==========================================
     wire [LDPC_BLOCK-1:0] ldpc_res;
     wire ldpc_done;
+    wire [5:0] ldpc_iters_core;
+    
+    // Latch iter_count to preserve it when core goes to IDLE
+    reg [5:0] final_iter_count;
+    always @(posedge clk) begin
+        if (rst) final_iter_count <= 0;
+        else if (ldpc_done || ldpc_core_fail) final_iter_count <= ldpc_iters_core;
+        else if (buffer_release_pulse) final_iter_count <= 0; // Discard = 0 iters
+    end
+    assign ldpc_iters_out = final_iter_count;
 
     wire [12*LDPC_BLOCK-1:0] ldpc_l_buffer_ext;
     genvar gi_llr;
@@ -139,7 +159,7 @@ module qkd_post_processing_top #(
     syndrome_weight_counter u_adder_tree (
         .clk(clk),
         .rst_n(~rst),
-        .syn_in(syndrome_buffer[1151:0]), // Tính trọng số dựa trên Error Syndrome
+        .syn_in(err_syndrome_buffer), // Tính trọng số dựa trên Error Syndrome thay vì Alice Syndrome
         .shw_out(shw_val)
     );
 
@@ -174,11 +194,11 @@ module qkd_post_processing_top #(
         .done(ldpc_done),
         .ir_success(ir_success),
         .ir_fail_intr(ldpc_core_fail),
-        .iter_out(ldpc_iters_out),
+        .iter_out(ldpc_iters_core),
         .puncture_en(puncture_en),
         .resume_decoding(resume_decoding),
-        .hash_ok(hash_ok),
-        .hash_fail(hash_fail),
+        .hash_ok(1'b1), // Bỏ qua pha Hash vì khối PA đang tạm tắt
+        .hash_fail(1'b0),
         .ldpc_res_out(ldpc_res)
     );
 

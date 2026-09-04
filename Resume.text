@@ -1,0 +1,209 @@
+%-------------------------
+% Resume in Latex
+% Author : Jake Gutierrez
+% Based off of: https://github.com/sb2nov/resume
+% License : MIT
+%------------------------
+
+\documentclass[letterpaper,11pt]{article}
+\usepackage{fontawesome5}
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\input{glyphtounicode}
+
+
+%----------FONT OPTIONS----------
+% sans-serif
+% \usepackage[sfdefault]{FiraSans}
+% \usepackage[sfdefault]{roboto}
+% \usepackage[sfdefault]{noto-sans}
+% \usepackage[default]{sourcesanspro}
+
+% serif
+% \usepackage{CormorantGaramond}
+% \usepackage{charter}
+
+
+\pagestyle{fancy}
+\fancyhf{} % clear all header and footer fields
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+% Ensure that generate pdf is machine readable/ATS parsable
+\pdfgentounicode=1
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}}
+  }
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubSubheading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \textit{\small#1} & \textit{\small #2} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\begin{document}
+
+\begin{center}
+    \textbf{\Huge \scshape Nguyen Minh Sang}
+\end{center}
+
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Hanoi University of Science and Technology}{Hanoi, Vietnam}
+      {Major: Electronics and Telecommunications Engineering \quad | \quad GPA: 3.44}{Oct. 2022 -- Present}
+  \resumeSubHeadingListEnd
+
+
+%-----------EXPERIENCE-----------
+\section{Experience}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Software Engineering Intern (RF and FPGA)}{Nov. 2025 -- Present}
+      {Viettel Manufacturing Corporation}{Ha Noi, Vietnam}
+      \resumeItemListStart
+        \resumeItem{Engaged in research and development of FPGA-based hardware systems and digital signal processing.}
+        \resumeItem{Performed signal spectrum and power measurements, system calibration, and comprehensive hardware testing.}
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+
+
+%-----------Projects-----------
+\section{Projects}
+  \resumeSubHeadingListStart
+
+    \resumeSubheading
+      {QKD Post-Processing Controller on FPGA}{May 2026 -- Present}
+      {Hardware Optimization \& Logic Design}{HUST, Ha Noi}
+      \resumeItemListStart
+        \resumeItem{Optimized LDPC decoding architecture for Quantum Key Distribution (QKD) on FPGA.}
+        \resumeItem{Improved hardware performance by analyzing FSM control logic and reducing LUT utilization.}
+        \resumeItem{Analyzed and debugged hardware-algorithm co-design syndromes via simulations.}
+        \resumeItem{Documented architecture designs and performance metrics for academic presentation.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Machine Learning for FOD Classification}{Aug. 2025 -- Dec. 2025}
+      {AI/ML Algorithm Researcher}{HUST, Ha Noi}
+      \resumeItemListStart
+        \resumeItem{Researched and evaluated YOLOv11n and Faster R-CNN models for Foreign Object Debris (FOD) classification.}
+        \resumeItem{Conducted comparative analysis on detection accuracy and inference speed for real-time applications.}
+        \resumeItem{Processed and augmented custom image datasets to improve model robustness under varying lighting.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {FPGA-based PCB Defect Detection System}{Jul. 2026 -- Present}
+      {Computer Vision on FPGA}{Viettel Manufacturing Coporation, Ha Noi}
+      \resumeItemListStart
+        \resumeItem{Deployed CNN object detection model onto an FPGA platform using MIPI cameras.}
+        \resumeItem{Trained custom electronic components datasets on Google Colab for real-time defect detection.}
+        \resumeItem{Optimized model quantization and hardware resource allocation to achieve high inference speed.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {xv6 Syscall Filter (Sandbox OS)}{March. 2026 -- June. 2026 }
+      {Operating Systems Development (\href{https://github.com/SangNmd2004/xv6-syscall-filter}{GitHub})}{HUST, Ha Noi}
+      \resumeItemListStart
+        \resumeItem{Implemented system call filtering mechanism in the xv6 operating system kernel using C.}
+        \resumeItem{Modified OS kernel source code to track, manage, and intercept system call executions.}
+        \resumeItem{Debugged kernel modifications using QEMU emulator and GDB to ensure system stability.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Digital Signal Processing on FPGA}{Aug. 2025 -- Nov. 2025}
+      {DSP \& Hardware Implementation}{Viettel Manufacturing Coporation, Ha Noi}
+      \resumeItemListStart
+        \resumeItem{Modeled and simulated digital audio encoding algorithms (ADPCM, CVSD, LDM) using MATLAB Simulink.}
+        \resumeItem{Embedded and evaluated the verified DSP models on an FPGA platform for real-time signal processing.}
+        \resumeItem{Validated signal fidelity and hardware latency for efficient analog-digital conversions.}
+      \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+
+%-----------Skill and Interests-----------
+\section{Skills \& Interests}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+    \vspace{1mm}
+     \textbf{Skills}{: FPGA Logic Design (Verilog/VHDL), Digital Signal Processing, Hardware Optimization, C/C++, Python} \\
+     \vspace{1mm}
+     \textbf{Tools}{: Xilinx Vivado, MATLAB Simulink, Gowin EDA, Proteus, Git, LaTeX} \\
+     \vspace{1mm}
+    
+    }}
+ \end{itemize}
+ \begin{center}
+    
+\small 0936438172 $|$
+\href{mailto:sang.nm226718@sis.hust.edu.vn}{\underline{sang.nm226718@sis.hust.edu.vn}} $|$
+\href{https://github.com/SangNmd2004}{\raisebox{0.0\height}{\footnotesize \faGithub}\ {https://github.com/SangNmd2004}} \\
+\vspace{2pt}
+\small An Khanh, Ha Noi, Viet Nam $|$ 20/01/2004
+\end{center}
+
+
+\end{document}

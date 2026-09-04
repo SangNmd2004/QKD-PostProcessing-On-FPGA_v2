@@ -33,3 +33,11 @@ venv/
 # Log and data outputs
 /data/
 *.csv
+
+# Temporary RS codec folders
+rs_codec_tmp/
+rs_freecore_tmp/
+archive_legacy/
+xgui/
+python_sim/
+qkd_post_processing_legacy/

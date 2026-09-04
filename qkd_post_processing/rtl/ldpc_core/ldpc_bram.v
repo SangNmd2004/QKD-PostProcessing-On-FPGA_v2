@@ -16,8 +16,8 @@ module ldpc_bram #(
 );
 
     // Khởi tạo mảng nhớ
-    // Vivado Synthesis tool sẽ tự động nhận diện mẫu code này và ánh xạ (map) nó vào Block RAM cứng.
-    reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
+    // Vivado và Gowin Synthesis tool sẽ tự động nhận diện mẫu code này và ánh xạ vào Block RAM cứng.
+    (* ram_style = "block" *) reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
     
     always @(posedge clk) begin
         if (we) begin

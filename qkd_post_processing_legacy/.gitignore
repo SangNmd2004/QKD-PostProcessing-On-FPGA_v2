@@ -1,0 +1,35 @@
+# Vivado Project Files
+*.xpr
+*.jou
+*.log
+*.str
+*.zip
+*.dcp
+*.bit
+*.hdf
+*.mmi
+*.bin
+*.pdi
+
+# Vivado Directories
+.Xil/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.srcs/
+
+# Python Virtual Environments & Pycache
+__pycache__/
+*.pyc
+.env
+venv/
+
+# IDE files
+.vscode/
+.idea/
+
+# Log and data outputs
+/data/
+*.csv
