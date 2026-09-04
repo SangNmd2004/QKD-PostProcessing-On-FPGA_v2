@@ -136,19 +136,6 @@ module qkd_post_processing_top #(
     end
     assign ldpc_iters_out = final_iter_count;
 
-    wire [12*LDPC_BLOCK-1:0] ldpc_l_buffer_ext;
-    genvar gi_llr;
-    generate
-        // Split the generate loop into two to bypass Gowin EDA's 2000 loop iteration limit
-        for(gi_llr=0; gi_llr<1200; gi_llr=gi_llr+1) begin : gen_llr_ext_0
-            wire [LLR_W-1:0] val = ldpc_l_buffer[gi_llr*LLR_W +: LLR_W];
-            assign ldpc_l_buffer_ext[gi_llr*12 +: 12] = {{ (12-LLR_W){val[LLR_W-1]} }, val};
-        end
-        for(gi_llr=1200; gi_llr<LDPC_BLOCK; gi_llr=gi_llr+1) begin : gen_llr_ext_1
-            wire [LLR_W-1:0] val = ldpc_l_buffer[gi_llr*LLR_W +: LLR_W];
-            assign ldpc_l_buffer_ext[gi_llr*12 +: 12] = {{ (12-LLR_W){val[LLR_W-1]} }, val};
-        end
-    endgenerate
     // ==========================================
     // Predictive Controller (Hardware Algorithm Co-Design)
     // ==========================================
@@ -174,14 +161,14 @@ module qkd_post_processing_top #(
 
     assign ir_fail_intr = ldpc_core_fail | buffer_release_pulse;
 
-    // Sử dụng kiến trúc tối ưu cho Gowin 138K Pro (Siêu phân giải)
+    // Sử dụng kiến trúc tối ưu hóa 6-bit cho Gowin 138K Pro (Giảm 50% LUTs)
     core_partially_parallel #(
         .Zc(96),
-        .data_w(12), // LLR 12-bit
+        .data_w(6),  // LLR 6-bit
         .D_vnu(12),
         .D_cnu(15), 
-        .ext_w(2),   // V2C width = res_w (12) + ext_w (2) = 14 bits
-        .res_w(12),  // C2V 12-bit
+        .ext_w(2),   // V2C width = res_w (6) + ext_w (2) = 8 bits
+        .res_w(6),   // C2V 6-bit
         .shift_w(7)
     ) u_ldpc_core (
         .clk(clk),
@@ -189,7 +176,7 @@ module qkd_post_processing_top #(
         .start(ldpc_en), // Nếu discard_flag = 1, ldpc_en = 0 -> LDPC hoàn toàn ngủ yên
         .iter_max_in(iter_max), // Sử dụng Predictive Controller
         .code_rate(opt_rate),   // Dùng hoàn toàn thuật toán dự đoán thay vì AXI
-        .llr_in_array(ldpc_l_buffer_ext),
+        .llr_in_array(ldpc_l_buffer), // Sử dụng trực tiếp buffer 6-bit
         .syn_in(syndrome_buffer),
         .done(ldpc_done),
         .ir_success(ir_success),
