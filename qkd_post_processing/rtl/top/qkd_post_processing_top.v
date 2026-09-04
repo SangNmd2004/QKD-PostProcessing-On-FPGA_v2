@@ -36,7 +36,8 @@ module qkd_post_processing_top #(
     input  wire hash_fail,
     output wire ir_success,
     output wire [5:0] ldpc_iters_out,
-    output wire pa_active
+    output wire pa_active,
+    output wire discard_flag
 );
 
     // ==========================================
@@ -45,6 +46,8 @@ module qkd_post_processing_top #(
     wire [LLR_W*LDPC_BLOCK-1:0] ldpc_l_buffer;
     wire ldpc_start;
     reg ldpc_en;
+    wire p_ready_sig;
+    wire ldpc_core_fail;
     
     // Tích hợp LLR tuần tự thành 1 khối
     axis_to_parallel #(
@@ -60,7 +63,7 @@ module qkd_post_processing_top #(
         
         .p_data_out(ldpc_l_buffer),
         .p_valid_out(ldpc_start),
-        .p_ready_in(ldpc_en) // Báo hiệu LDPC đã đọc xong block
+        .p_ready_in(p_ready_sig) // Báo hiệu LDPC đã đọc xong block (hoặc bị discard)
     );
 
     // ==========================================
@@ -82,18 +85,30 @@ module qkd_post_processing_top #(
         
         .p_data_out(syndrome_buffer),
         .p_valid_out(syn_start),
-        .p_ready_in(ldpc_en)
+        .p_ready_in(p_ready_sig)
     );
 
+    reg buffer_release_pulse;
     always @(posedge clk) begin
-        if (rst) ldpc_en <= 0;
-        else begin
+        if (rst) begin
+            ldpc_en <= 0;
+            buffer_release_pulse <= 0;
+        end else begin
+            buffer_release_pulse <= 0; // Mặc định xóa pulse
+            
             // Chỉ bắt đầu giải mã khi CẢ LLR và Syndrome đều đã được nạp đủ
-            if (ldpc_start && syn_start && !ldpc_en) ldpc_en <= 1;
+            if (ldpc_start && syn_start && !ldpc_en && !buffer_release_pulse) begin
+                if (discard_flag)
+                    buffer_release_pulse <= 1; // Kích hoạt pulse vứt bỏ rác, giải phóng buffer, cắt điện LDPC
+                else
+                    ldpc_en <= 1; // Bật nguồn khối LDPC
+            end
             else if (resume_decoding) ldpc_en <= 1; // Kích hoạt p_ready_in để giải phóng buffer Syndrome cũ
-            else if (ir_success || ir_fail_intr) ldpc_en <= 0;
+            else if (ir_success || ldpc_core_fail) ldpc_en <= 0;
         end
     end
+
+    assign p_ready_sig = ldpc_en | buffer_release_pulse;
 
     // ==========================================
     // 3. MODULE: Information Reconciliation (Partially Parallel QC-LDPC)
@@ -114,6 +129,30 @@ module qkd_post_processing_top #(
             assign ldpc_l_buffer_ext[gi_llr*12 +: 12] = {{ (12-LLR_W){val[LLR_W-1]} }, val};
         end
     endgenerate
+    // ==========================================
+    // Predictive Controller (Hardware Algorithm Co-Design)
+    // ==========================================
+    wire [10:0] shw_val;
+    wire [1:0] opt_rate;
+    wire [7:0] iter_max;
+
+    syndrome_weight_counter u_adder_tree (
+        .clk(clk),
+        .rst_n(~rst),
+        .syn_in(syndrome_buffer[1151:0]), // Tính trọng số dựa trên Error Syndrome
+        .shw_out(shw_val)
+    );
+
+    statistical_controller u_controller (
+        .clk(clk),
+        .rst_n(~rst),
+        .shw_in(shw_val),
+        .opt_rate(opt_rate),
+        .iter_max(iter_max),
+        .discard_flag(discard_flag)
+    );
+
+    assign ir_fail_intr = ldpc_core_fail | buffer_release_pulse;
 
     // Sử dụng kiến trúc tối ưu cho Gowin 138K Pro (Siêu phân giải)
     core_partially_parallel #(
@@ -123,18 +162,18 @@ module qkd_post_processing_top #(
         .D_cnu(15), 
         .ext_w(2),   // V2C width = res_w (12) + ext_w (2) = 14 bits
         .res_w(12),  // C2V 12-bit
-        .shift_w(7),
-        .MAX_ITER(50)
+        .shift_w(7)
     ) u_ldpc_core (
         .clk(clk),
         .rst(rst),
-        .start(ldpc_en),
-        .code_rate(code_rate),
+        .start(ldpc_en), // Nếu discard_flag = 1, ldpc_en = 0 -> LDPC hoàn toàn ngủ yên
+        .iter_max_in(iter_max), // Sử dụng Predictive Controller
+        .code_rate(opt_rate),   // Dùng hoàn toàn thuật toán dự đoán thay vì AXI
         .llr_in_array(ldpc_l_buffer_ext),
         .syn_in(syndrome_buffer),
         .done(ldpc_done),
         .ir_success(ir_success),
-        .ir_fail_intr(ir_fail_intr),
+        .ir_fail_intr(ldpc_core_fail),
         .iter_out(ldpc_iters_out),
         .puncture_en(puncture_en),
         .resume_decoding(resume_decoding),
